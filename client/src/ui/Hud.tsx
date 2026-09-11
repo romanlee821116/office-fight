@@ -2,6 +2,7 @@ import { cancelReconnect, disconnect } from '../net/client';
 import { useGame } from '../store/useGame';
 import { ChatPanel } from './ChatPanel';
 import { DuelOverlay } from './DuelOverlay';
+import { IdleWarning } from './IdleWarning';
 import { FightPanel } from './FightPanel';
 import { InteractionBar } from './InteractionBar';
 import { PlayerList } from './PlayerList';
@@ -38,7 +39,8 @@ export function Hud() {
         </div>
       </div>
 
-      <div className="mx-auto mt-3">
+      <div className="mx-auto mt-3 flex flex-col items-center gap-2">
+        <IdleWarning />
         <DuelOverlay />
       </div>
 

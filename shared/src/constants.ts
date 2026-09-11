@@ -76,6 +76,22 @@ export const DUEL = {
 export const SYNC_INTERVAL_MS = 50; // 20Hz
 /** 斷線後保留座位與狀態的秒數（網路短暫中斷可原位接回） */
 export const RECONNECT_WINDOW_SEC = 30;
+
+/**
+ * 閒置自動離開：避免忘記關的分頁長時間佔用免費雲端方案的執行額度。
+ * 以「分頁是否在背景」區分忘記關的分頁與開著在看辦公室的人，
+ * 後者用較寬鬆的無操作門檻，才不會把坐在位子上工作的人踢掉。
+ */
+export const IDLE = {
+  /** 分頁切到背景超過此時間就自動離開 */
+  hiddenMs: 60 * 60 * 1000,
+  /** 分頁開著但完全沒有任何操作超過此時間也離開（例如放在副螢幕忘了） */
+  inactiveMs: 3 * 60 * 60 * 1000,
+  /** 離開前多久發出警告 */
+  warnBeforeMs: 5 * 60 * 1000,
+  /** 伺服端檢查間隔 */
+  checkIntervalMs: 30 * 1000,
+};
 export const MAX_CLIENTS = 20;
 
 /** 文字限制 */

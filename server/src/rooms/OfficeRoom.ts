@@ -4,6 +4,7 @@ import {
   AVATAR_IDS,
   DUEL,
   FIGHT,
+  IDLE,
   DUMBBELL_RACK_SLOTS,
   PICKUPS,
   SEAT_BY_ID,
@@ -31,6 +32,7 @@ import {
   type DuelAction,
   type DuelEvent,
   type HitEvent,
+  type IdleEvent,
   type JoinOptions,
   type MovePayload,
   type PickupPayload,
@@ -74,7 +76,14 @@ interface ClientMeta {
   chatTimestamps: number[];
   lastAttackAt: number;
   respawnTimer: { clear(): void } | null;
+  /** 分頁切到背景的時間戳，null 代表分頁在前景 */
+  hiddenSince: number | null;
+  /** 已發出閒置警告，避免重複發送 */
+  idleWarned: boolean;
 }
+
+/** 讓前端不要自動重連的關閉碼（等同使用者主動離開） */
+const CLOSE_CONSENTED = 4000;
 
 interface DuelInvite {
   fromId: string;
@@ -101,25 +110,100 @@ export class OfficeRoom extends Room<OfficeState> {
   private pickupSeq = 0;
   private projectileSeq = 0;
 
+  /** 註冊訊息處理，並統一把任何操作記為活動時間（閒置判定用） */
+  private onPlayerMessage<T>(type: string, handler: (client: Client, payload: T) => void): void {
+    this.onMessage<T>(type, (client, payload) => {
+      const player = this.state.players.get(client.sessionId);
+      const meta = this.meta.get(client.sessionId);
+      if (player) player.lastSeen = Date.now();
+      if (meta?.idleWarned) {
+        meta.idleWarned = false;
+        client.send(Messages.idle, { kind: 'clear' } satisfies IdleEvent);
+      }
+      handler(client, payload);
+    });
+  }
+
   onCreate(): void {
     this.setState(new OfficeState());
 
-    this.onMessage<MovePayload>(Messages.move, (client, payload) => this.handleMove(client, payload));
-    this.onMessage<string>(Messages.setStatus, (client, text) => this.handleStatus(client, text));
-    this.onMessage<SitPayload>(Messages.sit, (client, payload) => this.handleSit(client, payload));
-    this.onMessage(Messages.stand, (client) => this.handleStand(client));
-    this.onMessage<boolean>(Messages.toggleFight, (client, on) => this.handleToggleFight(client, on));
-    this.onMessage(Messages.attack, (client) => this.handleAttack(client));
-    this.onMessage<DuelAction>(Messages.duel, (client, action) => this.handleDuel(client, action));
-    this.onMessage<PickupPayload>(Messages.pickup, (client, payload) => this.handlePickup(client, payload));
-    this.onMessage(Messages.drop, (client) => this.handleDrop(client));
-    this.onMessage<string>(Messages.chat, (client, text) => this.handleChat(client, text));
+    this.onPlayerMessage<MovePayload>(Messages.move, (client, payload) => this.handleMove(client, payload));
+    this.onPlayerMessage<string>(Messages.setStatus, (client, text) => this.handleStatus(client, text));
+    this.onPlayerMessage<SitPayload>(Messages.sit, (client, payload) => this.handleSit(client, payload));
+    this.onPlayerMessage(Messages.stand, (client) => this.handleStand(client));
+    this.onPlayerMessage<boolean>(Messages.toggleFight, (client, on) => this.handleToggleFight(client, on));
+    this.onPlayerMessage(Messages.attack, (client) => this.handleAttack(client));
+    this.onPlayerMessage<DuelAction>(Messages.duel, (client, action) => this.handleDuel(client, action));
+    this.onPlayerMessage<PickupPayload>(Messages.pickup, (client, payload) => this.handlePickup(client, payload));
+    this.onPlayerMessage(Messages.drop, (client) => this.handleDrop(client));
+    this.onPlayerMessage<string>(Messages.chat, (client, text) => this.handleChat(client, text));
+    // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
+    this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
     for (let i = 0; i < PICKUPS.initial; i++) this.spawnPickup();
     for (const slot of DUMBBELL_RACK_SLOTS) this.addPickup('dumbbell', slot.x, slot.z, slot.y, false);
     this.clock.setInterval(() => this.spawnPickup(), PICKUPS.intervalMs);
+    this.clock.setInterval(() => this.checkIdlePlayers(), IDLE.checkIntervalMs);
 
     logger.info(`房間建立：${this.roomId}`);
+  }
+
+  private handleVisibility(client: Client, hidden: boolean): void {
+    const meta = this.meta.get(client.sessionId);
+    if (!meta) return;
+    if (hidden) {
+      meta.hiddenSince = meta.hiddenSince ?? Date.now();
+      return;
+    }
+    // 回到前景視為活動，清掉警告
+    meta.hiddenSince = null;
+    const player = this.state.players.get(client.sessionId);
+    if (player) player.lastSeen = Date.now();
+    if (meta.idleWarned) {
+      meta.idleWarned = false;
+      client.send(Messages.idle, { kind: 'clear' } satisfies IdleEvent);
+    }
+  }
+
+  /**
+   * 閒置檢查：分頁在背景過久，或完全沒有操作過久，就先警告再請對方離開。
+   * 目的是讓忘記關的分頁不會一直讓免費雲端方案保持喚醒。
+   */
+  private checkIdlePlayers(): void {
+    const now = Date.now();
+    for (const player of [...this.state.players.values()]) {
+      const meta = this.meta.get(player.id);
+      if (!meta) continue;
+
+      const hiddenFor = meta.hiddenSince ? now - meta.hiddenSince : 0;
+      const inactiveFor = now - player.lastSeen;
+      const reason: IdleEvent['reason'] | null =
+        hiddenFor >= IDLE.hiddenMs ? 'hidden' : inactiveFor >= IDLE.inactiveMs ? 'inactive' : null;
+
+      if (reason) {
+        this.kickIdle(player.id, player.name, reason);
+        continue;
+      }
+
+      const warnHidden = meta.hiddenSince !== null && hiddenFor >= IDLE.hiddenMs - IDLE.warnBeforeMs;
+      const warnInactive = inactiveFor >= IDLE.inactiveMs - IDLE.warnBeforeMs;
+      if (!meta.idleWarned && (warnHidden || warnInactive)) {
+        meta.idleWarned = true;
+        const remainingMs = warnHidden ? IDLE.hiddenMs - hiddenFor : IDLE.inactiveMs - inactiveFor;
+        const client = this.clients.find((c) => c.sessionId === player.id);
+        client?.send(Messages.idle, { kind: 'warn', reason: warnHidden ? 'hidden' : 'inactive', remainingMs } satisfies IdleEvent);
+      }
+    }
+  }
+
+  private kickIdle(sessionId: string, name: string, reason: NonNullable<IdleEvent['reason']>): void {
+    const client = this.clients.find((c) => c.sessionId === sessionId);
+    this.broadcastSystem(`${name} 閒置過久，已自動離開`);
+    logger.info(`閒置移出：${name}（${reason}）`);
+    if (!client) return;
+    client.send(Messages.idle, { kind: 'kick', reason } satisfies IdleEvent);
+    // 用 consented 關閉碼，前端才不會嘗試自動重連
+    client.leave(CLOSE_CONSENTED);
   }
 
   onJoin(client: Client, options: JoinOptions): void {
@@ -153,7 +237,14 @@ export class OfficeRoom extends Room<OfficeState> {
     player.lastSeen = Date.now();
 
     this.state.players.set(client.sessionId, player);
-    this.meta.set(client.sessionId, { lastMoveAt: 0, chatTimestamps: [], lastAttackAt: 0, respawnTimer: null });
+    this.meta.set(client.sessionId, {
+      lastMoveAt: 0,
+      chatTimestamps: [],
+      lastAttackAt: 0,
+      respawnTimer: null,
+      hiddenSince: null,
+      idleWarned: false,
+    });
 
     this.broadcastSystem(`${name} 進入了辦公室`);
     logger.info(`加入：${name} (${client.sessionId})，目前 ${this.state.players.size} 人`);

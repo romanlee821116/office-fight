@@ -229,6 +229,15 @@ export type DuelEvent =
   | { kind: 'start'; aId: string; bId: string; startsAt: number }
   | { kind: 'end'; winnerId: string; winnerName: string; loserId: string; loserName: string; reason: 'ko' | 'forfeit' };
 
+/** S→C：閒置提醒與自動離開 */
+export interface IdleEvent {
+  kind: 'warn' | 'kick' | 'clear';
+  /** hidden = 分頁在背景過久；inactive = 完全沒有操作過久 */
+  reason?: 'hidden' | 'inactive';
+  /** kind 為 warn 時，剩餘幾毫秒會被移出房間 */
+  remainingMs?: number;
+}
+
 /** S→C：倒地者復活 */
 export interface RespawnEvent {
   sessionId: string;
@@ -301,6 +310,8 @@ export const Messages = {
   pickup: 'pickup',
   drop: 'drop',
   projectile: 'projectile',
+  visibility: 'visibility',
+  idle: 'idle',
   chat: 'chat',
   system: 'system',
 } as const;

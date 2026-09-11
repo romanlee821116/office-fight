@@ -95,6 +95,8 @@ interface GameState {
   toast: string | null;
   /** 重連進度說明（phase 為 reconnecting 時顯示） */
   reconnectStatus: string | null;
+  /** 閒置警告：到期時間（Date.now 基準）與原因 */
+  idleWarning: { reason: 'hidden' | 'inactive'; deadline: number } | null;
 
   setPhase: (phase: Phase) => void;
   setError: (error: string | null) => void;
@@ -118,6 +120,7 @@ interface GameState {
   setDuel: (duel: DuelInfo | null) => void;
   showToast: (text: string) => void;
   setReconnectStatus: (text: string | null) => void;
+  setIdleWarning: (warning: { reason: 'hidden' | 'inactive'; deadline: number } | null) => void;
   reset: () => void;
 }
 
@@ -141,6 +144,7 @@ const initial = {
   duel: null,
   toast: null,
   reconnectStatus: null,
+  idleWarning: null,
 };
 
 export const useGame = create<GameState>((set) => ({
@@ -201,6 +205,7 @@ export const useGame = create<GameState>((set) => ({
   setPendingDuelTo: (pendingDuelTo) => set({ pendingDuelTo }),
   setDuel: (duel) => set({ duel }),
   setReconnectStatus: (reconnectStatus) => set({ reconnectStatus }),
+  setIdleWarning: (idleWarning) => set({ idleWarning }),
   showToast: (text) => {
     set({ toast: text });
     setTimeout(() => {

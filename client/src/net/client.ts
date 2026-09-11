@@ -8,6 +8,7 @@ import {
   type DuelAction,
   type DuelEvent,
   type HitEvent,
+  type IdleEvent,
   type JoinOptions,
   type PickupPayload,
   type PickupState,
@@ -66,6 +67,15 @@ let leavingOnPurpose = false;
 /** 最近一次成功加入的選項，重連失敗時用來重新加入 */
 let lastJoinOptions: JoinOptions | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+/** 回到大廳後要顯示的訊息（例如被閒置移出）；reset() 會清空 store，所以先存在這裡 */
+let pendingLobbyMessage: string | null = null;
+
+/** 分頁前景/背景狀態回報，伺服端用來判斷是不是忘記關的分頁 */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    room?.send(Messages.visibility, document.hidden);
+  });
+}
 
 function startHeartbeat(): void {
   stopHeartbeat();
@@ -85,6 +95,8 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   room = r;
   leavingOnPurpose = false;
   startHeartbeat();
+  // 補報目前的分頁狀態（例如在背景分頁重連成功）
+  if (typeof document !== 'undefined' && document.hidden) r.send(Messages.visibility, true);
   const store = useGame.getState();
   const $ = getStateCallbacks(r);
 
@@ -249,6 +261,19 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     useGame.getState().setDeadUntil(null);
   });
 
+  r.onMessage<IdleEvent>(Messages.idle, (ev) => {
+    const s = useGame.getState();
+    if (ev.kind === 'warn') {
+      s.setIdleWarning({ reason: ev.reason ?? 'inactive', deadline: Date.now() + (ev.remainingMs ?? 0) });
+    } else if (ev.kind === 'clear') {
+      s.setIdleWarning(null);
+    } else {
+      s.setIdleWarning(null);
+      pendingLobbyMessage =
+        ev.reason === 'hidden' ? '分頁閒置過久，已自動離開辦公室' : '閒置過久，已自動離開辦公室';
+    }
+  });
+
   r.onMessage<SystemMessage>(Messages.system, (msg) => {
     useGame.getState().pushMessage({ id: `sys-${msg.ts}-${Math.random()}`, kind: 'system', text: msg.text, ts: msg.ts });
   });
@@ -263,6 +288,10 @@ function bindRoom(r: Room<OfficeStateShape>): void {
       stopHeartbeat();
       resetRuntime();
       useGame.getState().reset();
+      if (pendingLobbyMessage) {
+        useGame.getState().setError(pendingLobbyMessage);
+        pendingLobbyMessage = null;
+      }
       return;
     }
     void tryReconnect(r.reconnectionToken);
@@ -327,6 +356,7 @@ export async function connect(options: JoinOptions): Promise<void> {
     client = client ?? new Client(endpoint());
     const r = await client.joinOrCreate<OfficeStateShape>(ROOM_NAME, options);
     lastJoinOptions = options;
+    pendingLobbyMessage = null;
     bindRoom(r);
     useGame.getState().setPhase('office');
   } catch (err) {
