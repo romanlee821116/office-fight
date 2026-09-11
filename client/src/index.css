@@ -33,6 +33,23 @@ canvas {
   box-shadow: 0 8px 30px rgba(43, 52, 64, 0.12);
 }
 
+@keyframes heart-float {
+  0% {
+    transform: translateY(0) scale(0.4);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-46px) scale(1.15);
+    opacity: 0;
+  }
+}
+.heart-float {
+  animation: heart-float 1.2s ease-out infinite;
+}
+
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
 }

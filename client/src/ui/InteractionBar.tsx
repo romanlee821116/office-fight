@@ -1,5 +1,5 @@
 import { DANCES, EMOTES, SEAT_BY_ID, getPet, getWeapon, type DanceId, type EmoteId } from '@office/shared';
-import { sendPetDrop, sendPetPickup, sendPickup, sendSit, sendStand, sendStoveTake } from '../net/client';
+import { sendFeedPet, sendPetDrop, sendPetPickup, sendPickup, sendSit, sendStand, sendStovePlace, sendStoveTake } from '../net/client';
 import { toggleDance, triggerEmote } from '../scene/runtime';
 import { useGame } from '../store/useGame';
 
@@ -67,10 +67,14 @@ export function InteractionBar() {
         </div>
       )}
       {holdingFood && !carriedPet && (nearPet || (nearStove && !stove.foodId)) && (
-        <div className="glass pointer-events-auto rounded-full px-3 py-1 text-xs opacity-90">
-          <kbd className="rounded bg-ink/10 px-1 font-bold">F</kbd>{' '}
+        <button
+          type="button"
+          onClick={() => (nearPet ? sendFeedPet(nearPet.id) : sendStovePlace())}
+          className="glass pointer-events-auto flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium cursor-pointer hover:bg-white"
+        >
+          <kbd className="rounded-md bg-ink px-1.5 py-0.5 text-[11px] font-bold text-white">F</kbd>
           {nearPet ? `餵${getPet(nearPet.petType).name}吃${getWeapon(myWeapon)?.name}` : '把食物放上爐子'}
-        </div>
+        </button>
       )}
       <div className={'glass pointer-events-auto flex flex-wrap justify-center gap-1 rounded-full p-1 ' + (seated ? 'opacity-50' : '')}>
         {DANCES.map((d) => (

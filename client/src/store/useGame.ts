@@ -28,6 +28,8 @@ export interface PetInfo {
   hp: number;
   /** 抱著牠的玩家 sessionId，空字串代表在地上 */
   carrierId: string;
+  /** 目前動作（顯示進食愛心用） */
+  anim: string;
 }
 
 export interface PickupInfo {

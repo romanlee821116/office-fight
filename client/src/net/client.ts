@@ -199,7 +199,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
 
   $(r.state).pets.onAdd((pet, id) => {
     petTargets.set(id, { x: pet.x, z: pet.z, rotY: pet.rotY, anim: pet.anim, fresh: true, carrierId: pet.carrierId, flight: null });
-    const sync = () => useGame.getState().upsertPet({ id, petType: pet.petType, hp: pet.hp, carrierId: pet.carrierId });
+    const sync = () => useGame.getState().upsertPet({ id, petType: pet.petType, hp: pet.hp, carrierId: pet.carrierId, anim: pet.anim });
     sync();
     // 高頻位置走可變 map（不觸發 re-render），血量與抱起狀態走 store
     $(pet).onChange(() => {
@@ -213,6 +213,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     });
     $(pet).listen('hp', sync);
     $(pet).listen('carrierId', sync);
+    $(pet).listen('anim', sync);
   });
 
   // 瓦斯爐狀態

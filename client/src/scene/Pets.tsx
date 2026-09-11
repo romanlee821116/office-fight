@@ -38,9 +38,24 @@ function PetTag({ id }: { id: string }) {
   const pet = useGame((s) => s.pets[id]);
   if (!pet) return null;
   const def = getPet(pet.petType);
+  const eating = pet.anim === 'eat';
   return (
     <Html position={[0, PET.tagHeight, 0]} center distanceFactor={14} zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
       <div className="flex flex-col items-center gap-1 select-none" style={{ transform: 'translateY(-100%)' }}>
+        {eating && (
+          <div className="relative h-5 w-16">
+            {['-28px', '0px', '26px'].map((x, i) => (
+              <span
+                key={x}
+                className="heart-float absolute bottom-0 left-1/2 text-[15px]"
+                style={{ marginLeft: x, animationDelay: `${i * 0.4}s` }}
+                aria-hidden
+              >
+                {i === 1 ? '💖' : '❤️'}
+              </span>
+            ))}
+          </div>
+        )}
         <div className="rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-medium text-ink shadow whitespace-nowrap">🐾 {def.name}</div>
         {pet.hp < PET.maxHp && pet.hp > 0 && (
           <div className="h-1 w-14 overflow-hidden rounded-full bg-black/30">
