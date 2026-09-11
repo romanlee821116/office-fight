@@ -10,6 +10,7 @@ import {
   type HitEvent,
   type IdleEvent,
   type JoinOptions,
+  type PetState,
   type PickupPayload,
   type PickupState,
   type ProjectileEvent,
@@ -21,11 +22,12 @@ import {
 } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { beep, flashTitle, nativeNotify, stopFlashTitle } from '../lib/notify';
-import { applyKnockback, bloodQueue, local, projectileQueue, remoteTargets, resetRuntime } from '../scene/runtime';
+import { applyKnockback, bloodQueue, local, petTargets, projectileQueue, remoteTargets, resetRuntime } from '../scene/runtime';
 
 interface OfficeStateShape {
   players: Map<string, PlayerState>;
   pickups: Map<string, PickupState>;
+  pets: Map<string, PetState>;
 }
 
 const ROOM_NAME = 'office';
@@ -178,6 +180,26 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   });
   $(r.state).pickups.onRemove((_pickup, id) => {
     useGame.getState().removePickup(id);
+  });
+
+  $(r.state).pets.onAdd((pet, id) => {
+    petTargets.set(id, { x: pet.x, z: pet.z, rotY: pet.rotY, anim: pet.anim, fresh: true });
+    const sync = () => useGame.getState().upsertPet({ id, petType: pet.petType, hp: pet.hp });
+    sync();
+    // 高頻位置走可變 map（不觸發 re-render），血量走 store
+    $(pet).onChange(() => {
+      const t = petTargets.get(id);
+      if (!t) return;
+      t.x = pet.x;
+      t.z = pet.z;
+      t.rotY = pet.rotY;
+      t.anim = pet.anim;
+    });
+    $(pet).listen('hp', sync);
+  });
+  $(r.state).pets.onRemove((_pet, id) => {
+    petTargets.delete(id);
+    useGame.getState().removePet(id);
   });
 
   r.onMessage<ProjectileEvent>(Messages.projectile, (ev) => {

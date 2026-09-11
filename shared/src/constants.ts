@@ -64,6 +64,38 @@ export const PICKUPS = {
   throwArcHeight: 1.4,
 };
 
+/** 辦公室寵物：伺服端 AI 隨機走動 / 停頓 / 跳舞，可被攻擊，死亡後重生新的一隻 */
+export const PET = {
+  /** 同時在場數量 */
+  count: 1,
+  maxHp: 100,
+  /** 模型縮放（原始約 1.6～1.8 單位高） */
+  scale: 0.45,
+  /** 碰撞半徑 */
+  radius: 0.3,
+  walkSpeed: 1.3,
+  aiTickMs: 100,
+  /** 停頓時間範圍 */
+  idleMs: [2000, 5000] as [number, number],
+  danceMs: [4000, 8000] as [number, number],
+  /** 走一段路的放棄時限 */
+  walkTimeoutMs: 12000,
+  /** 每次散步的最遠距離 */
+  wanderDist: 6,
+  /** 被打後的僵直 */
+  staggerMs: 600,
+  /** 倒地屍體停留時間 */
+  deadMs: 2500,
+  /** 死亡到新寵物出生的間隔 */
+  respawnMs: 8000,
+  /** 寵物比較輕，擊退距離倍率 */
+  knockbackFactor: 1.4,
+  /** 活動範圍（含健身房） */
+  area: { minX: -11, maxX: 19, minZ: -7, maxZ: 7 },
+  /** 名牌高度 */
+  tagHeight: 1.15,
+};
+
 /** 決鬥 */
 export const DUEL = {
   inviteTtlMs: 30000,

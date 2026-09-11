@@ -5,6 +5,9 @@ import {
   DUEL,
   FIGHT,
   IDLE,
+  PET,
+  PETS,
+  getPet,
   DUMBBELL_RACK_SLOTS,
   PICKUPS,
   SEAT_BY_ID,
@@ -43,7 +46,7 @@ import {
   type WeaponDef,
 } from '@office/shared';
 import { logger } from '../logger';
-import { OfficeState, Pickup, Player } from './schema';
+import { OfficeState, Pet, Pickup, Player } from './schema';
 
 /** 拳頭 */
 const FIST: WeaponDef = {
@@ -85,6 +88,22 @@ interface ClientMeta {
 /** 讓前端不要自動重連的關閉碼（等同使用者主動離開） */
 const CLOSE_CONSENTED = 4000;
 
+interface PetAi {
+  mode: 'idle' | 'walk' | 'dance';
+  until: number;
+  tx: number;
+  tz: number;
+  staggerUntil: number;
+}
+
+function randIn([min, max]: [number, number]): number {
+  return min + Math.random() * (max - min);
+}
+
+function clampNum(v: number, min: number, max: number): number {
+  return v < min ? min : v > max ? max : v;
+}
+
 interface DuelInvite {
   fromId: string;
   toId: string;
@@ -109,6 +128,8 @@ export class OfficeRoom extends Room<OfficeState> {
   private duels: Duel[] = [];
   private pickupSeq = 0;
   private projectileSeq = 0;
+  private petSeq = 0;
+  private petAi = new Map<string, PetAi>();
 
   /** 註冊訊息處理，並統一把任何操作記為活動時間（閒置判定用） */
   private onPlayerMessage<T>(type: string, handler: (client: Client, payload: T) => void): void {
@@ -144,6 +165,9 @@ export class OfficeRoom extends Room<OfficeState> {
     for (const slot of DUMBBELL_RACK_SLOTS) this.addPickup('dumbbell', slot.x, slot.z, slot.y, false);
     this.clock.setInterval(() => this.spawnPickup(), PICKUPS.intervalMs);
     this.clock.setInterval(() => this.checkIdlePlayers(), IDLE.checkIntervalMs);
+
+    for (let i = 0; i < PET.count; i++) this.spawnPet(false);
+    this.clock.setInterval(() => this.tickPets(), PET.aiTickMs);
 
     logger.info(`房間建立：${this.roomId}`);
   }
@@ -395,7 +419,17 @@ export class OfficeRoom extends Room<OfficeState> {
         target = other;
         bestDist = dist;
       }
-      if (!target) return;
+      if (!target) {
+        // 沒有玩家目標時看看有沒有寵物
+        const pet = this.findPetTarget(attacker, fx, fz, weapon.range);
+        if (pet) {
+          const dx = pet.x - attacker.x;
+          const dz = pet.z - attacker.z;
+          const len = Math.hypot(dx, dz) || 1;
+          this.applyHitToPet(attacker, pet, dx / len, dz / len, weapon, len * 0.6);
+        }
+        return;
+      }
       const dx = target.x - attacker.x;
       const dz = target.z - attacker.z;
       const len = Math.hypot(dx, dz) || 1;
@@ -416,6 +450,22 @@ export class OfficeRoom extends Room<OfficeState> {
       if (side > PICKUPS.corridorHalfWidth) continue;
       target = other;
       travel = along;
+    }
+
+    // 走廊內沒有玩家時，看看有沒有寵物（決鬥中不行）
+    let petTarget: Pet | null = null;
+    if (!target && !attacker.duelWith) {
+      for (const pet of this.state.pets.values()) {
+        if (pet.anim === 'dead') continue;
+        const dx = pet.x - attacker.x;
+        const dz = pet.z - attacker.z;
+        const along = dx * fx + dz * fz;
+        if (along <= 0.2 || along > travel) continue;
+        const side = Math.abs(dx * fz - dz * fx);
+        if (side > PICKUPS.corridorHalfWidth) continue;
+        petTarget = pet;
+        travel = along;
+      }
     }
 
     const speed = weapon.projectileSpeed ?? 10;
@@ -444,6 +494,7 @@ export class OfficeRoom extends Room<OfficeState> {
     }
 
     const targetId = target?.id ?? null;
+    const petId = petTarget?.id ?? null;
     const flightMs = (travel / speed) * 1000;
     const attackerId = attacker.id;
     this.clock.setTimeout(() => {
@@ -455,6 +506,13 @@ export class OfficeRoom extends Room<OfficeState> {
         this.applyHit(shooter, victim, fx, fz, weapon, 0);
         landX = victim.x;
         landZ = victim.z;
+      } else if (shooter && petId) {
+        const pet = this.state.pets.get(petId);
+        if (pet && pet.anim !== 'dead') {
+          this.applyHitToPet(shooter, pet, fx, fz, weapon, 0);
+          landX = pet.x;
+          landZ = pet.z;
+        }
       }
       // 丟出去的食物落地後可以再撿
       if (weapon.kind === 'throw') this.addPickup(weapon.id, landX, landZ);
@@ -695,6 +753,181 @@ export class OfficeRoom extends Room<OfficeState> {
   private sendDuelTo(sessionId: string, event: DuelEvent): void {
     const client = this.clients.find((c) => c.sessionId === sessionId);
     if (client) client.send(Messages.duel, event);
+  }
+
+  // ---------- 辦公室寵物 ----------
+
+  /** 在範圍內找一個沒有家具的落點；around 給定時在其附近取點（散步用） */
+  private randomOpenPoint(
+    area: { minX: number; maxX: number; minZ: number; maxZ: number },
+    tries: number,
+    around?: { x: number; z: number; maxDist: number },
+  ): { x: number; z: number } | null {
+    for (let i = 0; i < tries; i++) {
+      let raw: { x: number; z: number };
+      if (around) {
+        const ang = Math.random() * Math.PI * 2;
+        const d = 1.5 + Math.random() * Math.max(0.5, around.maxDist - 1.5);
+        raw = {
+          x: clampNum(around.x + Math.sin(ang) * d, area.minX, area.maxX),
+          z: clampNum(around.z + Math.cos(ang) * d, area.minZ, area.maxZ),
+        };
+      } else {
+        raw = {
+          x: area.minX + Math.random() * (area.maxX - area.minX),
+          z: area.minZ + Math.random() * (area.maxZ - area.minZ),
+        };
+      }
+      const pos = resolvePosition(raw.x, raw.z, PET.radius);
+      // 被家具推開太多代表落在家具裡
+      if (Math.hypot(pos.x - raw.x, pos.z - raw.z) > 0.05) continue;
+      return pos;
+    }
+    return null;
+  }
+
+  private spawnPet(announce = true): void {
+    if (this.state.pets.size >= PET.count) return;
+    const def = PETS[Math.floor(Math.random() * PETS.length)];
+    const pos = this.randomOpenPoint(PET.area, 20);
+    if (!pos) return;
+
+    const pet = new Pet();
+    pet.id = `pet${++this.petSeq}`;
+    pet.petType = def.id;
+    pet.x = pos.x;
+    pet.z = pos.z;
+    pet.rotY = Math.random() * Math.PI * 2;
+    pet.anim = 'idle';
+    pet.hp = PET.maxHp;
+    this.state.pets.set(pet.id, pet);
+    this.petAi.set(pet.id, { mode: 'idle', until: Date.now() + randIn(PET.idleMs), tx: pos.x, tz: pos.z, staggerUntil: 0 });
+    if (announce) this.broadcastSystem(`🐾 ${def.name}來到了辦公室`);
+    logger.info(`寵物出生：${def.name} (${pet.id})`);
+  }
+
+  private setPetIdle(ai: PetAi, pet: Pet, now: number): void {
+    ai.mode = 'idle';
+    ai.until = now + randIn(PET.idleMs);
+    pet.anim = 'idle';
+  }
+
+  /** 寵物 AI：走動 → 停頓 → 偶爾跳舞 */
+  private tickPets(): void {
+    const now = Date.now();
+    for (const pet of this.state.pets.values()) {
+      const ai = this.petAi.get(pet.id);
+      if (!ai || pet.anim === 'dead') continue;
+      if (now < ai.staggerUntil) continue;
+      if (pet.anim === 'hit') pet.anim = 'idle'; // 僵直結束
+
+      if (ai.mode === 'walk') {
+        const dx = ai.tx - pet.x;
+        const dz = ai.tz - pet.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.15 || now > ai.until) {
+          this.setPetIdle(ai, pet, now);
+          continue;
+        }
+        const step = (PET.walkSpeed * PET.aiTickMs) / 1000;
+        const next = moveWithCollision({ x: pet.x, z: pet.z }, (dx / dist) * step, (dz / dist) * step, PET.radius);
+        // 幾乎沒前進代表被家具卡住，放棄這個目標
+        if (Math.hypot(next.x - pet.x, next.z - pet.z) < step * 0.2) {
+          this.setPetIdle(ai, pet, now);
+          continue;
+        }
+        pet.rotY = Math.atan2(dx / dist, dz / dist);
+        pet.x = next.x;
+        pet.z = next.z;
+        pet.anim = 'walk';
+        continue;
+      }
+
+      if (now < ai.until) continue;
+      const roll = Math.random();
+      if (roll < 0.55) {
+        const target = this.randomOpenPoint(PET.area, 10, { x: pet.x, z: pet.z, maxDist: PET.wanderDist });
+        if (target) {
+          ai.mode = 'walk';
+          ai.tx = target.x;
+          ai.tz = target.z;
+          ai.until = now + PET.walkTimeoutMs;
+        } else {
+          this.setPetIdle(ai, pet, now);
+        }
+      } else if (roll < 0.8) {
+        ai.mode = 'dance';
+        ai.until = now + randIn(PET.danceMs);
+        pet.anim = 'dance';
+      } else {
+        this.setPetIdle(ai, pet, now);
+      }
+    }
+  }
+
+  /** 對寵物結算一次命中：擊退、扣血、倒地與重生排程 */
+  private applyHitToPet(attacker: Player, pet: Pet, dirX: number, dirZ: number, weapon: WeaponDef, impactOffset: number): void {
+    const now = Date.now();
+    const kb = weapon.knockback * PET.knockbackFactor;
+    const to = moveWithCollision({ x: pet.x, z: pet.z }, dirX * kb, dirZ * kb, PET.radius);
+    const impactX = impactOffset ? attacker.x + dirX * impactOffset : pet.x;
+    const impactZ = impactOffset ? attacker.z + dirZ * impactOffset : pet.z;
+    pet.x = to.x;
+    pet.z = to.z;
+    pet.rotY = Math.atan2(-dirX, -dirZ); // 面向攻擊者
+    pet.hp = Math.max(0, pet.hp - weapon.damage);
+
+    const killed = pet.hp === 0;
+    const def = getPet(pet.petType);
+    if (killed) {
+      pet.anim = 'dead';
+      this.petAi.delete(pet.id);
+      this.broadcastSystem(`🐾 ${attacker.name} 用${weapon.name}打倒了${def.name}…新朋友幾秒後會來`);
+      logger.info(`寵物被打倒：${def.name} by ${attacker.name}`);
+      const petId = pet.id;
+      this.clock.setTimeout(() => this.state.pets.delete(petId), PET.deadMs);
+      this.clock.setTimeout(() => this.spawnPet(), PET.respawnMs);
+    } else {
+      pet.anim = 'hit';
+      const ai = this.petAi.get(pet.id);
+      if (ai) {
+        ai.staggerUntil = now + PET.staggerMs;
+        ai.mode = 'idle';
+        ai.until = now + PET.staggerMs;
+      }
+    }
+
+    const event: HitEvent = {
+      attackerId: attacker.id,
+      targetId: pet.id,
+      x: impactX,
+      z: impactZ,
+      dirX,
+      dirZ,
+      toX: to.x,
+      toZ: to.z,
+      hp: pet.hp,
+      killed,
+    };
+    this.broadcast(Messages.hit, event);
+  }
+
+  /** 在攻擊者正前方扇形內找最近的活寵物（決鬥中不能打寵物） */
+  private findPetTarget(attacker: Player, fx: number, fz: number, range: number): Pet | null {
+    if (attacker.duelWith) return null;
+    let target: Pet | null = null;
+    let bestDist = range;
+    for (const pet of this.state.pets.values()) {
+      if (pet.anim === 'dead') continue;
+      const dx = pet.x - attacker.x;
+      const dz = pet.z - attacker.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > bestDist || dist < 1e-3) continue;
+      if ((dx * fx + dz * fz) / dist < FIGHT.coneCos) continue;
+      target = pet;
+      bestDist = dist;
+    }
+    return target;
   }
 
   private respawn(sessionId: string): void {

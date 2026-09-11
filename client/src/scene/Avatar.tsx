@@ -87,8 +87,8 @@ interface AvatarProps {
 
 const litCache = new Map<string, MeshStandardMaterial>();
 
-/** Kenney 角色為 KHR_materials_unlit → MeshBasicMaterial，轉成受光材質以吃場景光與陰影 */
-function toLit(mat: Material): Material {
+/** Kenney 模型為 KHR_materials_unlit → MeshBasicMaterial，轉成受光材質以吃場景光與陰影 */
+export function toLit(mat: Material): Material {
   if (!(mat instanceof MeshBasicMaterial)) return mat;
   let lit = litCache.get(mat.uuid);
   if (!lit) {

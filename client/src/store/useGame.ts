@@ -20,6 +20,12 @@ export interface PlayerInfo {
   ammo: number;
 }
 
+export interface PetInfo {
+  id: string;
+  petType: string;
+  hp: number;
+}
+
 export interface PickupInfo {
   id: string;
   weaponId: string;
@@ -81,6 +87,8 @@ interface GameState {
   nearPickupId: string | null;
   /** 地上的武器 */
   pickups: Record<string, PickupInfo>;
+  /** 辦公室寵物 */
+  pets: Record<string, PetInfo>;
   /** 本地玩家是否坐著 */
   seated: boolean;
   /** 本地玩家倒地的復活時間（Date.now 基準），null 代表存活 */
@@ -113,6 +121,8 @@ interface GameState {
   setNearPickup: (pickupId: string | null) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
+  upsertPet: (pet: PetInfo) => void;
+  removePet: (id: string) => void;
   setSeated: (seated: boolean) => void;
   setDeadUntil: (deadUntil: number | null) => void;
   setDuelInvite: (invite: DuelInviteInfo | null) => void;
@@ -137,6 +147,7 @@ const initial = {
   nearSeatId: null,
   nearPickupId: null,
   pickups: {},
+  pets: {},
   seated: false,
   deadUntil: null,
   duelInvite: null,
@@ -166,7 +177,7 @@ export const useGame = create<GameState>((set) => ({
       return { players, bubbles };
     }),
 
-  resetPlayers: () => set({ players: {}, bubbles: {}, pickups: {} }),
+  resetPlayers: () => set({ players: {}, bubbles: {}, pickups: {}, pets: {} }),
 
   pushMessage: (entry) =>
     set((s) => ({
@@ -198,6 +209,13 @@ export const useGame = create<GameState>((set) => ({
       const pickups = { ...s.pickups };
       delete pickups[id];
       return { pickups };
+    }),
+  upsertPet: (pet) => set((s) => ({ pets: { ...s.pets, [pet.id]: pet } })),
+  removePet: (id) =>
+    set((s) => {
+      const pets = { ...s.pets };
+      delete pets[id];
+      return { pets };
     }),
   setSeated: (seated) => set((s) => (s.seated === seated ? s : { seated })),
   setDeadUntil: (deadUntil) => set({ deadUntil }),

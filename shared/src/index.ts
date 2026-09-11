@@ -6,3 +6,4 @@ export * from './data/avatars';
 export * from './data/furniture';
 export * from './data/seats';
 export * from './data/weapons';
+export * from './data/pets';

@@ -8,6 +8,7 @@ import {
   type AnimState,
   type DanceId,
   type EmoteId,
+  type PetAnim,
   type ProjectileEvent,
 } from '@office/shared';
 
@@ -22,6 +23,17 @@ export interface RemoteTarget {
 }
 
 export const remoteTargets = new Map<string, RemoteTarget>();
+
+/** 寵物的目標狀態（由網路更新，Pets 每幀插補） */
+export interface PetTarget {
+  x: number;
+  z: number;
+  rotY: number;
+  anim: PetAnim;
+  fresh: boolean;
+}
+
+export const petTargets = new Map<string, PetTarget>();
 
 /** 本地玩家目前位置（LocalPlayer 寫入，CameraRig 讀取） */
 export const local = {
@@ -133,6 +145,7 @@ export function focusPlayer(sessionId: string, durationMs = 2500): void {
 
 export function resetRuntime(): void {
   remoteTargets.clear();
+  petTargets.clear();
   local.x = SPAWN_POINT.x;
   local.z = SPAWN_POINT.z;
   local.rotY = 0;

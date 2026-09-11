@@ -5,6 +5,7 @@ import { BloodParticles } from './BloodParticles';
 import { CameraRig } from './CameraRig';
 import { LocalPlayer } from './LocalPlayer';
 import { Office } from './Office';
+import { Pets } from './Pets';
 import { Pickups } from './Pickups';
 import { Projectiles } from './Projectiles';
 import { RemotePlayer } from './RemotePlayer';
@@ -57,6 +58,7 @@ export function Scene() {
       <ContactShadows position={[0, 0.01, 0]} opacity={0.25} scale={40} blur={2} far={4} resolution={512} frames={1} />
       <LocalPlayer />
       <RemotePlayers />
+      <Pets />
       <Pickups />
       <Projectiles />
       <BloodParticles />

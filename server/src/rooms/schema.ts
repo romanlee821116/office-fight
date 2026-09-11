@@ -1,5 +1,5 @@
 import { MapSchema, Schema, type } from '@colyseus/schema';
-import type { AnimState } from '@office/shared';
+import type { AnimState, PetAnim } from '@office/shared';
 
 export class Player extends Schema {
   @type('string') id: string = '';
@@ -27,7 +27,18 @@ export class Pickup extends Schema {
   @type('number') y: number = 0;
 }
 
+export class Pet extends Schema {
+  @type('string') id: string = '';
+  @type('string') petType: string = '';
+  @type('number') x: number = 0;
+  @type('number') z: number = 0;
+  @type('number') rotY: number = 0;
+  @type('string') anim: PetAnim = 'idle';
+  @type('number') hp: number = 100;
+}
+
 export class OfficeState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Pickup }) pickups = new MapSchema<Pickup>();
+  @type({ map: Pet }) pets = new MapSchema<Pet>();
 }
