@@ -1,5 +1,15 @@
 import { DANCES, EMOTES, SEAT_BY_ID, getPet, getWeapon, type DanceId, type EmoteId } from '@office/shared';
-import { sendFeedPet, sendPetDrop, sendPetPickup, sendPickup, sendSit, sendStand, sendStovePlace, sendStoveTake } from '../net/client';
+import {
+  sendFeedPet,
+  sendPetDrop,
+  sendPetPickup,
+  sendPetThrow,
+  sendPickup,
+  sendSit,
+  sendStand,
+  sendStovePlace,
+  sendStoveTake,
+} from '../net/client';
 import { toggleDance, triggerEmote } from '../scene/runtime';
 import { useGame } from '../store/useGame';
 
@@ -62,9 +72,14 @@ export function InteractionBar() {
         </button>
       )}
       {carriedPet && (
-        <div className="glass pointer-events-none rounded-full px-3 py-1 text-xs opacity-80">
-          <kbd className="rounded bg-ink/10 px-1 font-bold">空白鍵</kbd> 把{getPet(carriedPet.petType).name}丟出去
-        </div>
+        <button
+          type="button"
+          onClick={() => sendPetThrow()}
+          className="glass pointer-events-auto flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium cursor-pointer hover:bg-white"
+        >
+          <kbd className="rounded-md bg-ink px-1.5 py-0.5 text-[11px] font-bold text-white">空白鍵</kbd>
+          把{getPet(carriedPet.petType).name}丟出去
+        </button>
       )}
       {holdingFood && !carriedPet && (nearPet || (nearStove && !stove.foodId)) && (
         <button
