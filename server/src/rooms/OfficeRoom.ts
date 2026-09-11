@@ -38,6 +38,7 @@ import {
   type IdleEvent,
   type JoinOptions,
   type MovePayload,
+  type PetFlightEvent,
   type PickupPayload,
   type ProjectileEvent,
   type RespawnEvent,
@@ -158,6 +159,9 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<PickupPayload>(Messages.pickup, (client, payload) => this.handlePickup(client, payload));
     this.onPlayerMessage(Messages.drop, (client) => this.handleDrop(client));
     this.onPlayerMessage<string>(Messages.chat, (client, text) => this.handleChat(client, text));
+    this.onPlayerMessage<{ petId: string }>(Messages.petPickup, (client, payload) => this.handlePetPickup(client, payload));
+    this.onPlayerMessage(Messages.petDrop, (client) => this.handlePetDrop(client));
+    this.onPlayerMessage(Messages.petThrow, (client) => this.handlePetThrow(client));
     // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
     this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
@@ -298,6 +302,7 @@ export class OfficeRoom extends Room<OfficeState> {
       if (opponent) this.endDuel(opponent, player, 'forfeit');
     }
     this.dropWeapon(player);
+    this.dropCarriedPet(player.id);
     this.state.players.delete(client.sessionId);
     this.meta.delete(client.sessionId);
     this.broadcastSystem(`${name} 離開了辦公室`);
@@ -350,6 +355,7 @@ export class OfficeRoom extends Room<OfficeState> {
       if (other.seatId === seat.id) return; // 已有人
     }
 
+    this.dropCarriedPet(player.id);
     player.seatId = seat.id;
     player.x = seat.x;
     player.z = seat.z;
@@ -456,7 +462,7 @@ export class OfficeRoom extends Room<OfficeState> {
     let petTarget: Pet | null = null;
     if (!target && !attacker.duelWith) {
       for (const pet of this.state.pets.values()) {
-        if (pet.anim === 'dead') continue;
+        if (pet.anim === 'dead' || pet.anim === 'thrown' || pet.carrierId) continue;
         const dx = pet.x - attacker.x;
         const dz = pet.z - attacker.z;
         const along = dx * fx + dz * fz;
@@ -545,6 +551,7 @@ export class OfficeRoom extends Room<OfficeState> {
     if (killed) {
       target.anim = 'dead';
       this.dropWeapon(target);
+      this.dropCarriedPet(target.id);
       if (attacker.duelWith === target.id) this.endDuel(attacker, target, 'ko');
       else this.broadcastSystem(`${attacker.name} 用${weapon.name}擊倒了 ${target.name}`);
       const targetId = target.id;
@@ -678,6 +685,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
   private startDuel(a: Player, b: Player): void {
     for (const p of [a, b]) {
+      this.dropCarriedPet(p.id);
       p.duelWith = p === a ? b.id : a.id;
       p.fightMode = true;
       p.hp = FIGHT.maxHp;
@@ -816,8 +824,19 @@ export class OfficeRoom extends Room<OfficeState> {
   private tickPets(): void {
     const now = Date.now();
     for (const pet of this.state.pets.values()) {
+      if (pet.carrierId) {
+        const carrier = this.state.players.get(pet.carrierId);
+        if (!carrier || carrier.hp <= 0) {
+          this.dropCarriedPet(pet.carrierId);
+          continue;
+        }
+        pet.x = carrier.x;
+        pet.z = carrier.z;
+        pet.rotY = carrier.rotY;
+        continue;
+      }
       const ai = this.petAi.get(pet.id);
-      if (!ai || pet.anim === 'dead') continue;
+      if (!ai || pet.anim === 'dead' || pet.anim === 'thrown') continue;
       if (now < ai.staggerUntil) continue;
       if (pet.anim === 'hit') pet.anim = 'idle'; // 僵直結束
 
@@ -863,6 +882,88 @@ export class OfficeRoom extends Room<OfficeState> {
         this.setPetIdle(ai, pet, now);
       }
     }
+  }
+
+  /** 玩家抱著的寵物（一次最多一隻） */
+  private carriedPetOf(playerId: string): Pet | null {
+    for (const pet of this.state.pets.values()) if (pet.carrierId === playerId) return pet;
+    return null;
+  }
+
+  private handlePetPickup(client: Client, payload: { petId: string }): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId || player.duelWith) return;
+    if (this.carriedPetOf(player.id)) return;
+    const pet = this.state.pets.get(payload?.petId ?? '');
+    if (!pet || pet.carrierId || pet.anim === 'dead' || pet.anim === 'thrown') return;
+    if (Math.hypot(pet.x - player.x, pet.z - player.z) > PET.pickupRange + 0.6) return;
+
+    pet.carrierId = player.id;
+    pet.anim = 'idle';
+    this.petAi.delete(pet.id);
+    this.broadcastSystem(`🐾 ${player.name} 抱起了${getPet(pet.petType).name}`);
+  }
+
+  private handlePetDrop(client: Client): void {
+    this.dropCarriedPet(client.sessionId, true);
+  }
+
+  /** 把玩家抱著的寵物放到腳邊；gently 為主動放下（放在面前而不是原地） */
+  private dropCarriedPet(playerId: string, gently = false): void {
+    const pet = this.carriedPetOf(playerId);
+    if (!pet) return;
+    const carrier = this.state.players.get(playerId);
+    let x = pet.x;
+    let z = pet.z;
+    if (carrier && gently) {
+      x = carrier.x + Math.sin(carrier.rotY) * 0.7;
+      z = carrier.z + Math.cos(carrier.rotY) * 0.7;
+    }
+    const pos = resolvePosition(x, z, PET.radius);
+    pet.carrierId = '';
+    pet.x = pos.x;
+    pet.z = pos.z;
+    pet.anim = 'idle';
+    this.petAi.set(pet.id, { mode: 'idle', until: Date.now() + randIn(PET.idleMs), tx: pos.x, tz: pos.z, staggerUntil: 0 });
+  }
+
+  /** 把抱著的寵物往面向方向丟出去：拋物線由前端播，落點與後續由伺服端決定 */
+  private handlePetThrow(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId) return;
+    const pet = this.carriedPetOf(player.id);
+    if (!pet) return;
+
+    const dirX = Math.sin(player.rotY);
+    const dirZ = Math.cos(player.rotY);
+    const from = { x: player.x, z: player.z };
+    const to = moveWithCollision(from, dirX * PET.throwDist, dirZ * PET.throwDist, PET.radius);
+    const dist = Math.hypot(to.x - from.x, to.z - from.z);
+    const durationMs = Math.max(250, (dist / PET.throwSpeed) * 1000);
+
+    pet.carrierId = '';
+    pet.x = to.x;
+    pet.z = to.z;
+    pet.rotY = player.rotY;
+    pet.anim = 'thrown';
+
+    const event: PetFlightEvent = { petId: pet.id, fromX: from.x, fromZ: from.z, toX: to.x, toZ: to.z, durationMs };
+    this.broadcast(Messages.petFlight, event);
+    this.broadcastSystem(`🐾 ${player.name} 把${getPet(pet.petType).name}丟了出去！`);
+
+    const petId = pet.id;
+    this.clock.setTimeout(() => {
+      const landed = this.state.pets.get(petId);
+      if (!landed || landed.anim === 'dead' || landed.carrierId) return;
+      landed.anim = 'hit'; // 落地後生氣抖一下
+      this.petAi.set(petId, {
+        mode: 'idle',
+        until: Date.now() + PET.landStaggerMs,
+        tx: landed.x,
+        tz: landed.z,
+        staggerUntil: Date.now() + PET.landStaggerMs,
+      });
+    }, durationMs);
   }
 
   /** 對寵物結算一次命中：擊退、扣血、倒地與重生排程 */
@@ -918,7 +1019,7 @@ export class OfficeRoom extends Room<OfficeState> {
     let target: Pet | null = null;
     let bestDist = range;
     for (const pet of this.state.pets.values()) {
-      if (pet.anim === 'dead') continue;
+      if (pet.anim === 'dead' || pet.anim === 'thrown' || pet.carrierId) continue;
       const dx = pet.x - attacker.x;
       const dz = pet.z - attacker.z;
       const dist = Math.hypot(dx, dz);

@@ -35,6 +35,7 @@ export class Pet extends Schema {
   @type('number') rotY: number = 0;
   @type('string') anim: PetAnim = 'idle';
   @type('number') hp: number = 100;
+  @type('string') carrierId: string = '';
 }
 
 export class OfficeState extends Schema {

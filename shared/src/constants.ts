@@ -94,6 +94,17 @@ export const PET = {
   area: { minX: -11, maxX: 19, minZ: -7, maxZ: 7 },
   /** 名牌高度 */
   tagHeight: 1.15,
+  /** 抱起的互動距離 */
+  pickupRange: 1.5,
+  /** 抱著時寵物在頭頂的高度 */
+  carryY: 1.8,
+  /** 丟出距離與速度 */
+  throwDist: 6,
+  throwSpeed: 9,
+  /** 拋物線最高點 */
+  throwArc: 1.3,
+  /** 落地後生氣抖動的時間 */
+  landStaggerMs: 1200,
 };
 
 /** 決鬥 */

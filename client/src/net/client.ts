@@ -10,6 +10,7 @@ import {
   type HitEvent,
   type IdleEvent,
   type JoinOptions,
+  type PetFlightEvent,
   type PetState,
   type PickupPayload,
   type PickupState,
@@ -183,10 +184,10 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   });
 
   $(r.state).pets.onAdd((pet, id) => {
-    petTargets.set(id, { x: pet.x, z: pet.z, rotY: pet.rotY, anim: pet.anim, fresh: true });
-    const sync = () => useGame.getState().upsertPet({ id, petType: pet.petType, hp: pet.hp });
+    petTargets.set(id, { x: pet.x, z: pet.z, rotY: pet.rotY, anim: pet.anim, fresh: true, carrierId: pet.carrierId, flight: null });
+    const sync = () => useGame.getState().upsertPet({ id, petType: pet.petType, hp: pet.hp, carrierId: pet.carrierId });
     sync();
-    // 高頻位置走可變 map（不觸發 re-render），血量走 store
+    // 高頻位置走可變 map（不觸發 re-render），血量與抱起狀態走 store
     $(pet).onChange(() => {
       const t = petTargets.get(id);
       if (!t) return;
@@ -194,8 +195,16 @@ function bindRoom(r: Room<OfficeStateShape>): void {
       t.z = pet.z;
       t.rotY = pet.rotY;
       t.anim = pet.anim;
+      t.carrierId = pet.carrierId;
     });
     $(pet).listen('hp', sync);
+    $(pet).listen('carrierId', sync);
+  });
+
+  r.onMessage<PetFlightEvent>(Messages.petFlight, (ev) => {
+    const t = petTargets.get(ev.petId);
+    if (!t) return;
+    t.flight = { fromX: ev.fromX, fromZ: ev.fromZ, toX: ev.toX, toZ: ev.toZ, startAt: performance.now(), durationMs: ev.durationMs };
   });
   $(r.state).pets.onRemove((_pet, id) => {
     petTargets.delete(id);
@@ -421,6 +430,18 @@ export function sendPickup(pickupId: string): void {
 
 export function sendDrop(): void {
   room?.send(Messages.drop);
+}
+
+export function sendPetPickup(petId: string): void {
+  room?.send(Messages.petPickup, { petId });
+}
+
+export function sendPetDrop(): void {
+  room?.send(Messages.petDrop);
+}
+
+export function sendPetThrow(): void {
+  room?.send(Messages.petThrow);
 }
 
 export function sendToggleFight(on: boolean): void {

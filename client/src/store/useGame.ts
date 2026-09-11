@@ -24,6 +24,8 @@ export interface PetInfo {
   id: string;
   petType: string;
   hp: number;
+  /** 抱著牠的玩家 sessionId，空字串代表在地上 */
+  carrierId: string;
 }
 
 export interface PickupInfo {
@@ -85,6 +87,8 @@ interface GameState {
   nearSeatId: string | null;
   /** 本地玩家附近可撿的武器 */
   nearPickupId: string | null;
+  /** 本地玩家附近可抱起的寵物 */
+  nearPetId: string | null;
   /** 地上的武器 */
   pickups: Record<string, PickupInfo>;
   /** 辦公室寵物 */
@@ -119,6 +123,7 @@ interface GameState {
   setStatusOpen: (open: boolean) => void;
   setNearSeat: (seatId: string | null) => void;
   setNearPickup: (pickupId: string | null) => void;
+  setNearPet: (petId: string | null) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
   upsertPet: (pet: PetInfo) => void;
@@ -146,6 +151,7 @@ const initial = {
   statusOpen: false,
   nearSeatId: null,
   nearPickupId: null,
+  nearPetId: null,
   pickups: {},
   pets: {},
   seated: false,
@@ -203,6 +209,7 @@ export const useGame = create<GameState>((set) => ({
   setStatusOpen: (open) => set({ statusOpen: open }),
   setNearSeat: (nearSeatId) => set((s) => (s.nearSeatId === nearSeatId ? s : { nearSeatId })),
   setNearPickup: (nearPickupId) => set((s) => (s.nearPickupId === nearPickupId ? s : { nearPickupId })),
+  setNearPet: (nearPetId) => set((s) => (s.nearPetId === nearPetId ? s : { nearPetId })),
   upsertPickup: (pickup) => set((s) => ({ pickups: { ...s.pickups, [pickup.id]: pickup } })),
   removePickup: (id) =>
     set((s) => {

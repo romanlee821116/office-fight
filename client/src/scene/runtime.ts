@@ -31,6 +31,10 @@ export interface PetTarget {
   rotY: number;
   anim: PetAnim;
   fresh: boolean;
+  /** 抱著牠的玩家 sessionId */
+  carrierId: string;
+  /** 被丟出去的飛行資訊（前端本地播放拋物線） */
+  flight: { fromX: number; fromZ: number; toX: number; toZ: number; startAt: number; durationMs: number } | null;
 }
 
 export const petTargets = new Map<string, PetTarget>();

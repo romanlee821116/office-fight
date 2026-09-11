@@ -4,6 +4,7 @@ import type { Group } from 'three';
 import {
   DANCES,
   EMOTES,
+  PET,
   PICKUPS,
   RUN_SPEED,
   SEAT_BY_ID,
@@ -15,11 +16,11 @@ import {
   moveWithCollision,
   type AnimState,
 } from '@office/shared';
-import { sendAttack, sendDrop, sendMove, sendPickup, sendSit, sendStand } from '../net/client';
+import { sendAttack, sendDrop, sendMove, sendPetDrop, sendPetPickup, sendPetThrow, sendPickup, sendSit, sendStand } from '../net/client';
 import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
 import { NameTag } from './NameTag';
-import { canAttack, local, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote } from './runtime';
+import { canAttack, local, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote } from './runtime';
 import { useKeyboard } from './useKeyboard';
 
 /** 每隔幾幀掃描一次附近座位 */
@@ -34,6 +35,30 @@ function lerpAngle(a: number, b: number, t: number): number {
 
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+}
+
+/** 我抱著的寵物 id */
+function carriedPetId(meId: string | undefined): string | null {
+  if (!meId) return null;
+  for (const p of Object.values(useGame.getState().pets)) {
+    if (p.carrierId === meId) return p.id;
+  }
+  return null;
+}
+
+/** 最近可抱起的寵物（排除被抱走、飛行中與倒地的） */
+function nearestPet(x: number, z: number): string | null {
+  let best: string | null = null;
+  let bestDist = PET.pickupRange;
+  for (const [id, t] of petTargets) {
+    if (t.carrierId || t.anim === 'dead' || t.anim === 'thrown') continue;
+    const d = Math.hypot(t.x - x, t.z - z);
+    if (d < bestDist) {
+      best = id;
+      bestDist = d;
+    }
+  }
+  return best;
 }
 
 /** 最近的地上武器 */
@@ -93,6 +118,11 @@ export function LocalPlayer() {
       if (isTyping(e.target) || e.repeat) return;
       if (e.code === 'Space') {
         e.preventDefault();
+        // 抱著寵物：空白鍵把牠丟出去
+        if (carriedPetId(useGame.getState().me?.sessionId)) {
+          if (!local.dead && !local.seatId) sendPetThrow();
+          return;
+        }
         // 非格鬥模式：手上是運動器材就做運動（啞鈴彎舉）
         const exercise = getWeapon(local.weaponId)?.exercise;
         if (!local.fightMode && exercise) {
@@ -108,11 +138,16 @@ export function LocalPlayer() {
       }
       if (e.code === 'KeyE') {
         if (local.dead) return;
-        const { nearSeatId, nearPickupId } = useGame.getState();
+        const state = useGame.getState();
+        const { nearSeatId, nearPickupId, nearPetId } = state;
         local.dance = null;
         if (local.seatId) {
           sendStand();
           standPending.current = true;
+        } else if (carriedPetId(state.me?.sessionId)) {
+          sendPetDrop(); // 抱著寵物時 E 是輕輕放下
+        } else if (nearPetId) {
+          sendPetPickup(nearPetId);
         } else if (nearPickupId) {
           sendPickup(nearPickupId);
         } else if (nearSeatId) {
@@ -242,6 +277,7 @@ export function LocalPlayer() {
       const seat = findNearestSeat(local.x, local.z, occupiedSeats(useGame.getState().me?.sessionId));
       useGame.getState().setNearSeat(seat?.id ?? null);
       useGame.getState().setNearPickup(nearestPickup(local.x, local.z));
+      useGame.getState().setNearPet(nearestPet(local.x, local.z));
     }
 
     // 20Hz 上傳；靜止且無變化時不重複送

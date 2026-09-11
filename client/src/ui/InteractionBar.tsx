@@ -1,5 +1,5 @@
-import { DANCES, EMOTES, SEAT_BY_ID, getWeapon, type DanceId, type EmoteId } from '@office/shared';
-import { sendPickup, sendSit, sendStand } from '../net/client';
+import { DANCES, EMOTES, SEAT_BY_ID, getPet, getWeapon, type DanceId, type EmoteId } from '@office/shared';
+import { sendPetDrop, sendPetPickup, sendPickup, sendSit, sendStand } from '../net/client';
 import { toggleDance, triggerEmote } from '../scene/runtime';
 import { useGame } from '../store/useGame';
 
@@ -10,6 +10,9 @@ export function InteractionBar() {
   const nearPickup = useGame((s) => (s.nearPickupId ? s.pickups[s.nearPickupId] : undefined));
   const seatLabel = nearSeatId ? SEAT_BY_ID.get(nearSeatId)?.label ?? '坐下' : '坐下';
   const pickupName = nearPickup ? getWeapon(nearPickup.weaponId)?.name : undefined;
+  const meId = useGame((s) => s.me?.sessionId);
+  const carriedPet = useGame((s) => (meId ? Object.values(s.pets).find((p) => p.carrierId === meId) : undefined));
+  const nearPet = useGame((s) => (s.nearPetId ? s.pets[s.nearPetId] : undefined));
 
   const onEmote = (id: EmoteId) => {
     triggerEmote(id);
@@ -20,15 +23,38 @@ export function InteractionBar() {
 
   return (
     <div className="pointer-events-none flex flex-col items-center gap-2">
-      {(seated || nearSeatId || nearPickup) && (
+      {(seated || nearSeatId || nearPickup || nearPet || carriedPet) && (
         <button
           type="button"
-          onClick={() => (seated ? sendStand() : nearPickup ? sendPickup(nearPickup.id) : nearSeatId && sendSit(nearSeatId))}
+          onClick={() =>
+            seated
+              ? sendStand()
+              : carriedPet
+                ? sendPetDrop()
+                : nearPet
+                  ? sendPetPickup(nearPet.id)
+                  : nearPickup
+                    ? sendPickup(nearPickup.id)
+                    : nearSeatId && sendSit(nearSeatId)
+          }
           className="glass pointer-events-auto flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium cursor-pointer hover:bg-white"
         >
           <kbd className="rounded-md bg-ink px-1.5 py-0.5 text-[11px] font-bold text-white">E</kbd>
-          {seated ? '起身' : nearPickup && !seated ? `撿起 ${pickupName ?? '武器'}` : seatLabel}
+          {seated
+            ? '起身'
+            : carriedPet
+              ? `放下 ${getPet(carriedPet.petType).name}`
+              : nearPet
+                ? `抱起 ${getPet(nearPet.petType).name}`
+                : nearPickup
+                  ? `撿起 ${pickupName ?? '武器'}`
+                  : seatLabel}
         </button>
+      )}
+      {carriedPet && (
+        <div className="glass pointer-events-none rounded-full px-3 py-1 text-xs opacity-80">
+          <kbd className="rounded bg-ink/10 px-1 font-bold">空白鍵</kbd> 把{getPet(carriedPet.petType).name}丟出去
+        </div>
       )}
       <div className={'glass pointer-events-auto flex flex-wrap justify-center gap-1 rounded-full p-1 ' + (seated ? 'opacity-50' : '')}>
         {DANCES.map((d) => (

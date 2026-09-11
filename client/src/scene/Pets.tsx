@@ -5,7 +5,7 @@ import { LoopRepeat, Mesh, type Group } from 'three';
 import { PET, PETS, getPet, type PetAnim } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { toLit } from './Avatar';
-import { petTargets } from './runtime';
+import { local, petTargets, remoteTargets } from './runtime';
 
 export function petUrl(model: string): string {
   return `/models/pets/${model}.glb`;
@@ -17,6 +17,7 @@ const CLIP_BY_ANIM: Record<PetAnim, string> = {
   walk: 'walk',
   dance: 'dance',
   hit: 'gesture-negative',
+  thrown: 'run', // 飛行中腳亂踢
   dead: 'idle',
 };
 const SNAP_DISTANCE = 4;
@@ -82,6 +83,47 @@ function PetModel({ id, petType }: { id: string; petType: string }) {
       g.rotation.y = t.rotY;
       t.fresh = false;
     }
+
+    // 被丟出去：本地播拋物線（落點由伺服端決定）
+    if (t.flight) {
+      const f = t.flight;
+      const p = Math.min(1, (performance.now() - f.startAt) / f.durationMs);
+      g.position.x = f.fromX + (f.toX - f.fromX) * p;
+      g.position.z = f.fromZ + (f.toZ - f.fromZ) * p;
+      g.position.y = PET.carryY * (1 - p) + Math.sin(Math.PI * p) * PET.throwArc;
+      b.rotation.x += dt * 12; // 空中翻滾
+      if (p >= 1) {
+        t.flight = null;
+        b.rotation.x = 0;
+        g.position.y = 0;
+      }
+      return;
+    }
+
+    // 被抱著：跟著抱的人，浮在頭頂
+    const meId = useGame.getState().me?.sessionId;
+    if (t.carrierId) {
+      const src = t.carrierId === meId ? local : remoteTargets.get(t.carrierId);
+      const k = 1 - Math.exp(-dt * 18);
+      if (src) {
+        g.position.x += (src.x - g.position.x) * k;
+        g.position.z += (src.z - g.position.z) * k;
+        g.rotation.y = lerpAngle(g.rotation.y, src.rotY, k);
+      }
+      g.position.y += (PET.carryY - g.position.y) * k;
+      if (b.rotation.z !== 0) b.rotation.z = 0;
+      const idleClip = 'idle';
+      if (idleClip !== current.current) {
+        const to = actions[idleClip];
+        if (to) {
+          to.setLoop(LoopRepeat, Infinity);
+          to.reset().play();
+          current.current = idleClip;
+        }
+      }
+      return;
+    }
+    if (g.position.y !== 0) g.position.y = Math.max(0, g.position.y - dt * 6);
 
     // 位置與朝向插補（伺服端 10Hz 更新）
     const dx = t.x - g.position.x;

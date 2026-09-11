@@ -230,7 +230,7 @@ export type DuelEvent =
   | { kind: 'end'; winnerId: string; winnerName: string; loserId: string; loserName: string; reason: 'ko' | 'forfeit' };
 
 /** 寵物動作（伺服端 AI 驅動） */
-export type PetAnim = 'idle' | 'walk' | 'dance' | 'hit' | 'dead';
+export type PetAnim = 'idle' | 'walk' | 'dance' | 'hit' | 'thrown' | 'dead';
 
 /** 前端讀取寵物 state 的結構型別（伺服端以 Schema 實作） */
 export interface PetState {
@@ -241,6 +241,18 @@ export interface PetState {
   rotY: number;
   anim: PetAnim;
   hp: number;
+  /** 抱著牠的玩家 sessionId，空字串代表在地上 */
+  carrierId: string;
+}
+
+/** S→C：寵物被丟出去的飛行資訊（命運已由伺服端決定，前端只播飛行視覺） */
+export interface PetFlightEvent {
+  petId: string;
+  fromX: number;
+  fromZ: number;
+  toX: number;
+  toZ: number;
+  durationMs: number;
 }
 
 /** S→C：閒置提醒與自動離開 */
@@ -326,6 +338,10 @@ export const Messages = {
   projectile: 'projectile',
   visibility: 'visibility',
   idle: 'idle',
+  petPickup: 'petPickup',
+  petDrop: 'petDrop',
+  petThrow: 'petThrow',
+  petFlight: 'petFlight',
   chat: 'chat',
   system: 'system',
 } as const;
