@@ -28,8 +28,13 @@ interface OfficeStateShape {
 }
 
 const ROOM_NAME = 'office';
-const RECONNECT_ATTEMPTS = 5;
-const RECONNECT_DELAY_MS = 1000;
+/** 前幾次用 reconnectionToken 接回原座位；之後伺服器可能已重啟，改為重新加入 */
+const RECONNECT_TOKEN_ATTEMPTS = 3;
+/** 總重試視窗：需涵蓋免費雲端方案的冷啟動（約 30～60 秒） */
+const RECONNECT_TOTAL_MS = 150_000;
+const RECONNECT_BACKOFF_MS = [1000, 2000, 3000, 5000, 8000, 8000, 8000, 10_000];
+/** 有人開著遊戲時定期打一次 /health，讓免費雲端方案不會因為沒有 HTTP 流量而休眠 */
+const HEARTBEAT_MS = 4 * 60 * 1000;
 
 /** Colyseus 正常離開的關閉碼（consented） */
 const CLOSE_CONSENTED = 4000;
@@ -58,10 +63,28 @@ function endpoint(): string {
 let client: Client | null = null;
 let room: Room<OfficeStateShape> | null = null;
 let leavingOnPurpose = false;
+/** 最近一次成功加入的選項，重連失敗時用來重新加入 */
+let lastJoinOptions: JoinOptions | null = null;
+let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+function startHeartbeat(): void {
+  stopHeartbeat();
+  heartbeat = setInterval(() => {
+    void fetch('/health', { cache: 'no-store' }).catch(() => {});
+  }, HEARTBEAT_MS);
+}
+
+function stopHeartbeat(): void {
+  if (heartbeat) {
+    clearInterval(heartbeat);
+    heartbeat = null;
+  }
+}
 
 function bindRoom(r: Room<OfficeStateShape>): void {
   room = r;
   leavingOnPurpose = false;
+  startHeartbeat();
   const store = useGame.getState();
   const $ = getStateCallbacks(r);
 
@@ -237,6 +260,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   r.onLeave((code) => {
     room = null;
     if (leavingOnPurpose || code === CLOSE_CONSENTED || code === CLOSE_NORMAL) {
+      stopHeartbeat();
       resetRuntime();
       useGame.getState().reset();
       return;
@@ -245,25 +269,53 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   });
 }
 
+/**
+ * 斷線後自動接回。前幾次用 token 接回原座位（涵蓋網路短暫中斷）；
+ * 若伺服器已重啟（免費雲端方案休眠後行程是全新的，token 必然失效），
+ * 改以原本的暱稱與角色重新加入。總視窗 150 秒，足以等待冷啟動。
+ */
 async function tryReconnect(token: string): Promise<void> {
-  const store = useGame.getState();
-  store.setPhase('reconnecting');
+  useGame.getState().setPhase('reconnecting');
+  const deadline = Date.now() + RECONNECT_TOTAL_MS;
+  let attempt = 0;
 
-  for (let attempt = 1; attempt <= RECONNECT_ATTEMPTS && client; attempt++) {
+  while (Date.now() < deadline && client && !leavingOnPurpose) {
+    attempt += 1;
+    const secondsLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const useToken = attempt <= RECONNECT_TOKEN_ATTEMPTS;
+    useGame
+      .getState()
+      .setReconnectStatus(`${useToken ? '嘗試接回原本的位置' : '伺服器可能正在喚醒，重新加入中'}（第 ${attempt} 次，${secondsLeft} 秒後放棄）`);
+
     try {
-      const r = await client.reconnect<OfficeStateShape>(token);
+      if (!useToken && !lastJoinOptions) break;
+      const r = useToken
+        ? await client.reconnect<OfficeStateShape>(token)
+        : await client.joinOrCreate<OfficeStateShape>(ROOM_NAME, lastJoinOptions!);
       bindRoom(r);
-      useGame.getState().setPhase('office');
-      useGame.getState().setError(null);
+      const s = useGame.getState();
+      s.setPhase('office');
+      s.setError(null);
+      s.setReconnectStatus(null);
       return;
     } catch {
-      await new Promise((res) => setTimeout(res, RECONNECT_DELAY_MS * attempt));
+      const wait = RECONNECT_BACKOFF_MS[Math.min(attempt - 1, RECONNECT_BACKOFF_MS.length - 1)];
+      await new Promise((res) => setTimeout(res, wait));
     }
   }
 
+  stopHeartbeat();
   resetRuntime();
   useGame.getState().reset();
-  useGame.getState().setError('與伺服器斷線，請重新進入');
+  if (!leavingOnPurpose) useGame.getState().setError('與伺服器斷線，請重新進入');
+}
+
+/** 放棄重連，回到大廳 */
+export function cancelReconnect(): void {
+  leavingOnPurpose = true;
+  stopHeartbeat();
+  resetRuntime();
+  useGame.getState().reset();
 }
 
 export async function connect(options: JoinOptions): Promise<void> {
@@ -274,6 +326,7 @@ export async function connect(options: JoinOptions): Promise<void> {
   try {
     client = client ?? new Client(endpoint());
     const r = await client.joinOrCreate<OfficeStateShape>(ROOM_NAME, options);
+    lastJoinOptions = options;
     bindRoom(r);
     useGame.getState().setPhase('office');
   } catch (err) {
@@ -287,6 +340,7 @@ export async function connect(options: JoinOptions): Promise<void> {
 
 export function disconnect(): void {
   leavingOnPurpose = true;
+  stopHeartbeat();
   room?.leave(true);
   room = null;
 }

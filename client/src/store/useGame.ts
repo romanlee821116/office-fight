@@ -93,6 +93,8 @@ interface GameState {
   duel: DuelInfo | null;
   /** 短暫提示 */
   toast: string | null;
+  /** 重連進度說明（phase 為 reconnecting 時顯示） */
+  reconnectStatus: string | null;
 
   setPhase: (phase: Phase) => void;
   setError: (error: string | null) => void;
@@ -115,6 +117,7 @@ interface GameState {
   setPendingDuelTo: (name: string | null) => void;
   setDuel: (duel: DuelInfo | null) => void;
   showToast: (text: string) => void;
+  setReconnectStatus: (text: string | null) => void;
   reset: () => void;
 }
 
@@ -137,6 +140,7 @@ const initial = {
   pendingDuelTo: null,
   duel: null,
   toast: null,
+  reconnectStatus: null,
 };
 
 export const useGame = create<GameState>((set) => ({
@@ -196,6 +200,7 @@ export const useGame = create<GameState>((set) => ({
   setDuelInvite: (duelInvite) => set({ duelInvite }),
   setPendingDuelTo: (pendingDuelTo) => set({ pendingDuelTo }),
   setDuel: (duel) => set({ duel }),
+  setReconnectStatus: (reconnectStatus) => set({ reconnectStatus }),
   showToast: (text) => {
     set({ toast: text });
     setTimeout(() => {

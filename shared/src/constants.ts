@@ -74,7 +74,8 @@ export const DUEL = {
 
 /** 網路 */
 export const SYNC_INTERVAL_MS = 50; // 20Hz
-export const RECONNECT_WINDOW_SEC = 10;
+/** 斷線後保留座位與狀態的秒數（網路短暫中斷可原位接回） */
+export const RECONNECT_WINDOW_SEC = 30;
 export const MAX_CLIENTS = 20;
 
 /** 文字限制 */

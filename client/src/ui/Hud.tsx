@@ -1,4 +1,4 @@
-import { disconnect } from '../net/client';
+import { cancelReconnect, disconnect } from '../net/client';
 import { useGame } from '../store/useGame';
 import { ChatPanel } from './ChatPanel';
 import { DuelOverlay } from './DuelOverlay';
@@ -10,6 +10,7 @@ import { StatusEditor } from './StatusEditor';
 export function Hud() {
   const phase = useGame((s) => s.phase);
   const error = useGame((s) => s.error);
+  const reconnectStatus = useGame((s) => s.reconnectStatus);
 
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col p-4">
@@ -42,8 +43,15 @@ export function Hud() {
       </div>
 
       {phase === 'reconnecting' && (
-        <div className="pointer-events-none mx-auto mt-3 rounded-full bg-amber-100 px-4 py-1.5 text-sm text-amber-800 shadow">
-          與伺服器斷線，重新連線中…
+        <div className="glass pointer-events-auto mx-auto mt-3 flex items-center gap-3 rounded-2xl bg-amber-50/90 px-4 py-2 text-sm text-amber-900 shadow">
+          <span className="h-3 w-3 animate-pulse rounded-full bg-amber-500" />
+          <span>
+            與伺服器斷線，重新連線中…
+            {reconnectStatus && <span className="ml-1 text-[11px] opacity-70">{reconnectStatus}</span>}
+          </span>
+          <button type="button" onClick={cancelReconnect} className="rounded-full bg-white/80 px-3 py-1 text-xs cursor-pointer hover:bg-white">
+            回大廳
+          </button>
         </div>
       )}
       {error && phase === 'office' && (
