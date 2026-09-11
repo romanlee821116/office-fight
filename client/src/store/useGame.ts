@@ -3,6 +3,17 @@ import { BUBBLE_DURATION_MS, CHAT_HISTORY } from '@office/shared';
 
 export type Phase = 'lobby' | 'connecting' | 'office' | 'reconnecting';
 
+const WEATHER_FX_KEY = 'office:weatherFx';
+
+/** 即時天氣效果的個人偏好，預設開啟 */
+function readWeatherEnabled(): boolean {
+  try {
+    return localStorage.getItem(WEATHER_FX_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
 /** 名單 / 名牌用的玩家資訊（不含高頻位置） */
 export interface PlayerInfo {
   sessionId: string;
@@ -101,6 +112,8 @@ interface GameState {
   stove: { foodId: string; stage: string };
   /** 即時天氣（伺服端每 30 分鐘更新） */
   weather: { code: number; temp: number; isDay: boolean };
+  /** 是否套用即時天氣效果（個人設定，存 localStorage，預設開） */
+  weatherEnabled: boolean;
   /** 地上的武器 */
   pickups: Record<string, PickupInfo>;
   /** 辦公室寵物 */
@@ -139,6 +152,7 @@ interface GameState {
   setNearStove: (near: boolean) => void;
   setStove: (stove: { foodId: string; stage: string }) => void;
   setWeather: (weather: { code: number; temp: number; isDay: boolean }) => void;
+  setWeatherEnabled: (enabled: boolean) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
   upsertPet: (pet: PetInfo) => void;
@@ -170,6 +184,7 @@ const initial = {
   nearStove: false,
   stove: { foodId: '', stage: '' },
   weather: { code: -1, temp: 0, isDay: true },
+  weatherEnabled: readWeatherEnabled(),
   pickups: {},
   pets: {},
   seated: false,
@@ -231,6 +246,14 @@ export const useGame = create<GameState>((set) => ({
   setNearStove: (nearStove) => set((s) => (s.nearStove === nearStove ? s : { nearStove })),
   setStove: (stove) => set({ stove }),
   setWeather: (weather) => set({ weather }),
+  setWeatherEnabled: (weatherEnabled) => {
+    try {
+      localStorage.setItem(WEATHER_FX_KEY, weatherEnabled ? '1' : '0');
+    } catch {
+      // 忽略儲存失敗
+    }
+    set({ weatherEnabled });
+  },
   upsertPickup: (pickup) => set((s) => ({ pickups: { ...s.pickups, [pickup.id]: pickup } })),
   removePickup: (id) =>
     set((s) => {

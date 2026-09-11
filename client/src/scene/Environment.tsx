@@ -26,6 +26,13 @@ const WEATHER_OVERRIDE = params?.has('weather') ? Number(params.get('weather')) 
 const OVERCAST_BG = new Color('#9AA6B5');
 const FLASH_WHITE = new Color('#FFFFFF');
 
+/** 生效的天氣代碼：測試覆寫最優先；使用者關閉即時天氣時一律視為晴天 */
+function effectiveWeatherCode(): number {
+  if (WEATHER_OVERRIDE !== null) return WEATHER_OVERRIDE;
+  const s = useGame.getState();
+  return s.weatherEnabled ? s.weather.code : 0;
+}
+
 function localHour(): number {
   const d = new Date();
   return d.getHours() + d.getMinutes() / 60;
@@ -76,8 +83,7 @@ function Precipitation() {
   useFrame((_state, dt) => {
     const im = mesh.current;
     if (!im) return;
-    const code = WEATHER_OVERRIDE ?? useGame.getState().weather.code;
-    const info = weatherInfo(code);
+    const info = weatherInfo(effectiveWeatherCode());
     const step = Math.min(dt, 0.05);
 
     if (info.precip === 'none') {
@@ -157,8 +163,7 @@ export function SceneEnvironment() {
   const nextThunder = useRef(0);
 
   useFrame((state, dt) => {
-    const code = WEATHER_OVERRIDE ?? useGame.getState().weather.code;
-    const info = weatherInfo(code);
+    const info = weatherInfo(effectiveWeatherCode());
     const pal = paletteAt(HOUR_OVERRIDE ?? localHour());
 
     // 目標值：日夜調色再依陰沉程度往灰色壓

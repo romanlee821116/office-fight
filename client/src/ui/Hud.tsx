@@ -14,6 +14,8 @@ export function Hud() {
   const error = useGame((s) => s.error);
   const reconnectStatus = useGame((s) => s.reconnectStatus);
   const weather = useGame((s) => s.weather);
+  const weatherEnabled = useGame((s) => s.weatherEnabled);
+  const setWeatherEnabled = useGame((s) => s.setWeatherEnabled);
   const wInfo = weatherInfo(weather.code);
 
   return (
@@ -27,11 +29,25 @@ export function Hud() {
               <span className="text-[10px] opacity-40" title="建置時間">v{__BUILD_TIME__}</span>
             </div>
             <div className="text-[11px] opacity-60">WASD 移動 · Shift 加速 · E 坐下 · 1-3 表情 · 4-7 跳舞 · 拖曳旋轉 · 滾輪縮放</div>
-            {weather.code >= 0 && (
-              <div className="mt-0.5 text-[11px] opacity-70">
-                {wInfo.emoji} {weather.temp}°C {wInfo.label} · {phaseLabel(new Date().getHours() + new Date().getMinutes() / 60)}
-              </div>
-            )}
+            <div className="mt-0.5 flex items-center gap-2 text-[11px]">
+              <button
+                type="button"
+                onClick={() => setWeatherEnabled(!weatherEnabled)}
+                title={weatherEnabled ? '關閉即時天氣效果（只影響自己的畫面）' : '開啟即時天氣效果'}
+                className={
+                  'flex items-center gap-1 rounded-full px-2 py-0.5 transition cursor-pointer ' +
+                  (weatherEnabled ? 'bg-sage/30 hover:bg-sage/45' : 'bg-ink/10 opacity-60 hover:opacity-90')
+                }
+              >
+                <span aria-hidden>🌦</span>
+                即時天氣：{weatherEnabled ? '開' : '關'}
+              </button>
+              {weatherEnabled && weather.code >= 0 && (
+                <span className="opacity-70">
+                  {wInfo.emoji} {weather.temp}°C {wInfo.label} · {phaseLabel(new Date().getHours() + new Date().getMinutes() / 60)}
+                </span>
+              )}
+            </div>
           </div>
           <FightPanel />
         </div>
