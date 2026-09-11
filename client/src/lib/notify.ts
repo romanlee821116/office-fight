@@ -27,7 +27,7 @@ export function nativeNotify(title: string, body: string): void {
   if (!canUseNativeNotifications() || Notification.permission !== 'granted') return;
   if (document.visibilityState === 'visible' && document.hasFocus()) return;
   try {
-    const n = new Notification(title, { body, icon: '/favicon.svg', tag: 'office-game' });
+    const n = new Notification(title, { body, icon: '/notify-icon.png', tag: 'office-game' });
     n.onclick = () => {
       window.focus();
       n.close();
