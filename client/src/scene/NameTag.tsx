@@ -1,0 +1,52 @@
+import { Html } from '@react-three/drei';
+import { FIGHT } from '@office/shared';
+import { useGame } from '../store/useGame';
+
+interface NameTagProps {
+  sessionId: string;
+  isMe?: boolean;
+}
+
+export function NameTag({ sessionId, isMe = false }: NameTagProps) {
+  const player = useGame((s) => s.players[sessionId]);
+  const bubble = useGame((s) => s.bubbles[sessionId]);
+  if (!player) return null;
+
+  const status = player.status;
+
+  return (
+    <Html position={[0, 2.1, 0]} center distanceFactor={14} zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
+      <div className="flex flex-col items-center gap-1 select-none" style={{ transform: 'translateY(-100%)' }}>
+        {bubble && (
+          <div className="relative max-w-[220px] rounded-2xl bg-white px-3 py-1.5 text-[13px] leading-snug text-ink shadow-md whitespace-pre-wrap break-words">
+            {bubble.text}
+            <span className="absolute left-1/2 -bottom-1.5 h-3 w-3 -translate-x-1/2 rotate-45 bg-white" />
+          </div>
+        )}
+        <div
+          className={
+            'flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-medium shadow whitespace-nowrap ' +
+            (isMe ? 'bg-ink text-white' : 'bg-white/90 text-ink')
+          }
+        >
+          {player.fightMode && <span aria-label="格鬥模式">🥊</span>}
+          <span>{player.name}</span>
+          {status && (
+            <>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-sage" />
+              <span className="font-normal opacity-80">{status}</span>
+            </>
+          )}
+        </div>
+        {player.fightMode && (
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-black/30">
+            <div
+              className={'h-full rounded-full transition-[width] duration-200 ' + (player.hp > 50 ? 'bg-emerald-400' : player.hp > 25 ? 'bg-amber-400' : 'bg-red-500')}
+              style={{ width: `${(player.hp / FIGHT.maxHp) * 100}%` }}
+            />
+          </div>
+        )}
+      </div>
+    </Html>
+  );
+}

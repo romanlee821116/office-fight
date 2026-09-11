@@ -1,0 +1,26 @@
+{
+  "name": "office-game",
+  "private": true,
+  "version": "0.1.0",
+  "description": "3D 虛擬辦公室（內網多人即時連線）",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "typecheck": "npm run typecheck -w shared -w server -w client",
+    "stop": "lsof -ti tcp:${PORT:-2567} | xargs kill 2>/dev/null || true",
+    "restart": "npm run stop && npm run build && npm run start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,18 @@
+# Render Blueprint：在 Render 建立服務時會讀取此檔
+# 部署方式見 README「免費雲端部署」
+services:
+  - type: web
+    name: office-fight
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # 進場密碼：sync false 代表不寫在程式碼裡，需在 Render 後台自行填入
+      - key: JOIN_CODE
+        sync: false

@@ -1,0 +1,338 @@
+import { Client, getStateCallbacks, type Room } from 'colyseus.js';
+import {
+  DUEL,
+  FIGHT,
+  Messages,
+  SEAT_BY_ID,
+  type ChatMessage,
+  type DuelAction,
+  type DuelEvent,
+  type HitEvent,
+  type JoinOptions,
+  type PickupPayload,
+  type PickupState,
+  type ProjectileEvent,
+  type MovePayload,
+  type PlayerState,
+  type RespawnEvent,
+  type SitPayload,
+  type SystemMessage,
+} from '@office/shared';
+import { useGame } from '../store/useGame';
+import { beep, flashTitle, nativeNotify, stopFlashTitle } from '../lib/notify';
+import { applyKnockback, bloodQueue, local, projectileQueue, remoteTargets, resetRuntime } from '../scene/runtime';
+
+interface OfficeStateShape {
+  players: Map<string, PlayerState>;
+  pickups: Map<string, PickupState>;
+}
+
+const ROOM_NAME = 'office';
+const RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY_MS = 1000;
+
+/** Colyseus 正常離開的關閉碼（consented） */
+const CLOSE_CONSENTED = 4000;
+const CLOSE_NORMAL = 1000;
+
+/** 查詢伺服端設定（dev 模式由 Vite proxy 轉發 /api 到 2567） */
+export async function fetchServerConfig(): Promise<{ requireJoinCode: boolean }> {
+  try {
+    const res = await fetch('/api/config', { cache: 'no-store' });
+    if (!res.ok) return { requireJoinCode: false };
+    const data = (await res.json()) as { requireJoinCode?: unknown };
+    return { requireJoinCode: data.requireJoinCode === true };
+  } catch {
+    return { requireJoinCode: false };
+  }
+}
+
+function endpoint(): string {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  if (import.meta.env.DEV) {
+    return `${proto}://${location.hostname}:2567`;
+  }
+  return `${proto}://${location.host}`;
+}
+
+let client: Client | null = null;
+let room: Room<OfficeStateShape> | null = null;
+let leavingOnPurpose = false;
+
+function bindRoom(r: Room<OfficeStateShape>): void {
+  room = r;
+  leavingOnPurpose = false;
+  const store = useGame.getState();
+  const $ = getStateCallbacks(r);
+
+  store.resetPlayers();
+  resetRuntime();
+
+  $(r.state).players.onAdd((player, sessionId) => {
+    const isMe = sessionId === r.sessionId;
+
+    if (isMe) {
+      // 以伺服端出生點為準
+      local.x = player.x;
+      local.z = player.z;
+      local.rotY = player.rotY;
+      useGame.getState().setMe({ sessionId, name: player.name, avatarId: player.avatarId });
+    } else {
+      remoteTargets.set(sessionId, { x: player.x, z: player.z, rotY: player.rotY, anim: player.anim, fresh: true });
+    }
+
+    const syncInfo = () =>
+      useGame.getState().upsertPlayer({
+        sessionId,
+        name: player.name,
+        avatarId: player.avatarId,
+        status: player.status,
+        seatId: player.seatId,
+        fightMode: player.fightMode,
+        hp: player.hp,
+        duelWith: player.duelWith,
+        weaponId: player.weaponId,
+        ammo: player.ammo,
+      });
+    syncInfo();
+
+    $(player).listen('status', syncInfo);
+    $(player).listen('name', syncInfo);
+    $(player).listen('seatId', syncInfo);
+    $(player).listen('fightMode', syncInfo);
+    $(player).listen('hp', syncInfo);
+    $(player).listen('duelWith', syncInfo);
+    $(player).listen('weaponId', syncInfo);
+    $(player).listen('ammo', syncInfo);
+
+    if (isMe) {
+      // 坐下 / 起身由伺服端決定位置與朝向，本地收到後直接套用
+      $(player).listen('seatId', (seatId) => {
+        local.seatId = seatId;
+        local.x = player.x;
+        local.z = player.z;
+        local.rotY = player.rotY;
+        local.anim = seatId ? (SEAT_BY_ID.get(seatId)?.anim ?? 'sit') : 'idle';
+        local.emote = null;
+        useGame.getState().setSeated(Boolean(seatId));
+      });
+      $(player).listen('fightMode', (on) => {
+        local.fightMode = on;
+      });
+      $(player).listen('weaponId', (id) => {
+        local.weaponId = id;
+      });
+    }
+
+    if (!isMe) {
+      $(player).onChange(() => {
+        const t = remoteTargets.get(sessionId);
+        if (!t) return;
+        t.x = player.x;
+        t.z = player.z;
+        t.rotY = player.rotY;
+        t.anim = player.anim;
+      });
+    }
+  });
+
+  $(r.state).pickups.onAdd((pickup, id) => {
+    const sync = () => useGame.getState().upsertPickup({ id, weaponId: pickup.weaponId, x: pickup.x, z: pickup.z, y: pickup.y });
+    sync();
+    $(pickup).onChange(sync);
+  });
+  $(r.state).pickups.onRemove((_pickup, id) => {
+    useGame.getState().removePickup(id);
+  });
+
+  r.onMessage<ProjectileEvent>(Messages.projectile, (ev) => {
+    projectileQueue.push(ev);
+  });
+
+  $(r.state).players.onRemove((_player, sessionId) => {
+    remoteTargets.delete(sessionId);
+    useGame.getState().removePlayer(sessionId);
+  });
+
+  r.onMessage<ChatMessage>(Messages.chat, (msg) => {
+    const s = useGame.getState();
+    s.pushMessage({ id: msg.id, kind: 'chat', senderId: msg.senderId, name: msg.name, text: msg.text, ts: msg.ts });
+    s.showBubble(msg.senderId, msg.text);
+    if (msg.senderId !== r.sessionId && (document.hidden || !document.hasFocus())) {
+      nativeNotify(`${msg.name}`, msg.text);
+    }
+  });
+
+  r.onMessage<HitEvent>(Messages.hit, (ev) => {
+    bloodQueue.push({ x: ev.x, z: ev.z, dirX: ev.dirX, dirZ: ev.dirZ, heavy: ev.killed });
+    if (ev.targetId !== r.sessionId) return;
+    // 自己被打：套用伺服端算好的擊退位置，面向攻擊者
+    applyKnockback(ev.toX, ev.toZ, -ev.dirX, -ev.dirZ);
+    if (ev.killed) {
+      local.dead = true;
+      local.seatId = '';
+      useGame.getState().setSeated(false);
+      useGame.getState().setDeadUntil(Date.now() + FIGHT.respawnMs);
+    }
+  });
+
+  r.onMessage<DuelEvent>(Messages.duel, (ev) => {
+    const s = useGame.getState();
+    switch (ev.kind) {
+      case 'invite':
+        s.setDuelInvite({ fromId: ev.fromId, fromName: ev.fromName, expiresAt: ev.expiresAt });
+        nativeNotify('⚔️ 戰鬥邀請', `${ev.fromName} 向你發出戰鬥邀請`);
+        flashTitle('⚔️ 戰鬥邀請！');
+        beep('invite');
+        break;
+      case 'sent':
+        s.setPendingDuelTo(ev.toName);
+        s.showToast(`已向 ${ev.toName} 送出戰鬥邀請，等待回應…`);
+        break;
+      case 'declined':
+        s.setPendingDuelTo(null);
+        s.showToast(
+          ev.reason === 'timeout' ? `${ev.byName} 沒有回應戰鬥邀請` : ev.reason === 'busy' ? `${ev.byName || '對方'} 目前無法決鬥` : `${ev.byName || '對方'} 拒絕了決鬥`,
+        );
+        break;
+      case 'start':
+        s.setPendingDuelTo(null);
+        if (ev.aId === r.sessionId || ev.bId === r.sessionId) {
+          s.setDuelInvite(null);
+          stopFlashTitle();
+        }
+        s.setDuel({ aId: ev.aId, bId: ev.bId, startsAt: ev.startsAt });
+        break;
+      case 'end': {
+        const endedAt = Date.now();
+        s.setDuel({ aId: ev.winnerId, bId: ev.loserId, startsAt: 0, winnerId: ev.winnerId, winnerName: ev.winnerName, loserName: ev.loserName, endedAt });
+        setTimeout(() => {
+          const cur = useGame.getState().duel;
+          if (cur?.endedAt === endedAt) useGame.getState().setDuel(null);
+        }, DUEL.resultBannerMs);
+        break;
+      }
+    }
+  });
+
+  r.onMessage<RespawnEvent>(Messages.respawn, (ev) => {
+    if (ev.sessionId !== r.sessionId) return;
+    local.x = ev.x;
+    local.z = ev.z;
+    local.rotY = 0;
+    local.dead = false;
+    local.knockback = null;
+    local.staggerUntil = 0;
+    useGame.getState().setDeadUntil(null);
+  });
+
+  r.onMessage<SystemMessage>(Messages.system, (msg) => {
+    useGame.getState().pushMessage({ id: `sys-${msg.ts}-${Math.random()}`, kind: 'system', text: msg.text, ts: msg.ts });
+  });
+
+  r.onError((code, message) => {
+    useGame.getState().setError(`連線錯誤 (${code})：${message ?? ''}`);
+  });
+
+  r.onLeave((code) => {
+    room = null;
+    if (leavingOnPurpose || code === CLOSE_CONSENTED || code === CLOSE_NORMAL) {
+      resetRuntime();
+      useGame.getState().reset();
+      return;
+    }
+    void tryReconnect(r.reconnectionToken);
+  });
+}
+
+async function tryReconnect(token: string): Promise<void> {
+  const store = useGame.getState();
+  store.setPhase('reconnecting');
+
+  for (let attempt = 1; attempt <= RECONNECT_ATTEMPTS && client; attempt++) {
+    try {
+      const r = await client.reconnect<OfficeStateShape>(token);
+      bindRoom(r);
+      useGame.getState().setPhase('office');
+      useGame.getState().setError(null);
+      return;
+    } catch {
+      await new Promise((res) => setTimeout(res, RECONNECT_DELAY_MS * attempt));
+    }
+  }
+
+  resetRuntime();
+  useGame.getState().reset();
+  useGame.getState().setError('與伺服器斷線，請重新進入');
+}
+
+export async function connect(options: JoinOptions): Promise<void> {
+  const store = useGame.getState();
+  store.setError(null);
+  store.setPhase('connecting');
+
+  try {
+    client = client ?? new Client(endpoint());
+    const r = await client.joinOrCreate<OfficeStateShape>(ROOM_NAME, options);
+    bindRoom(r);
+    useGame.getState().setPhase('office');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    store.setPhase('lobby');
+    // 伺服端明確回覆的使用者錯誤直接顯示，其餘視為連線問題
+    const userFacing = /暱稱|密碼/.test(message);
+    store.setError(userFacing ? message : `無法連線到伺服器：${message}`);
+  }
+}
+
+export function disconnect(): void {
+  leavingOnPurpose = true;
+  room?.leave(true);
+  room = null;
+}
+
+export function sendMove(payload: MovePayload): void {
+  room?.send(Messages.move, payload);
+}
+
+export function sendSit(seatId: string): void {
+  const payload: SitPayload = { seatId };
+  room?.send(Messages.sit, payload);
+}
+
+export function sendStand(): void {
+  room?.send(Messages.stand);
+}
+
+export function sendDuel(action: DuelAction): void {
+  room?.send(Messages.duel, action);
+}
+
+export function sendPickup(pickupId: string): void {
+  const payload: PickupPayload = { pickupId };
+  room?.send(Messages.pickup, payload);
+}
+
+export function sendDrop(): void {
+  room?.send(Messages.drop);
+}
+
+export function sendToggleFight(on: boolean): void {
+  room?.send(Messages.toggleFight, on);
+}
+
+export function sendAttack(): void {
+  room?.send(Messages.attack);
+}
+
+export function sendStatus(text: string): void {
+  room?.send(Messages.setStatus, text);
+}
+
+export function sendChat(text: string): void {
+  room?.send(Messages.chat, text);
+}
+
+export function isConnected(): boolean {
+  return room !== null;
+}
