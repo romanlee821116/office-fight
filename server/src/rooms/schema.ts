@@ -5,9 +5,9 @@ export class Player extends Schema {
   @type('string') id: string = '';
   @type('string') name: string = '';
   @type('string') avatarId: string = '';
-  @type('number') x: number = 0;
-  @type('number') z: number = 0;
-  @type('number') rotY: number = 0;
+  @type('float32') x: number = 0;
+  @type('float32') z: number = 0;
+  @type('float32') rotY: number = 0;
   @type('string') anim: AnimState = 'idle';
   @type('string') status: string = '';
   @type('string') seatId: string = '';
@@ -17,23 +17,22 @@ export class Player extends Schema {
   @type('string') weaponId: string = '';
   @type('number') ammo: number = 0;
   @type('boolean') onFire: boolean = false;
-  @type('number') lastSeen: number = 0;
 }
 
 export class Pickup extends Schema {
   @type('string') id: string = '';
   @type('string') weaponId: string = '';
-  @type('number') x: number = 0;
-  @type('number') z: number = 0;
-  @type('number') y: number = 0;
+  @type('float32') x: number = 0;
+  @type('float32') z: number = 0;
+  @type('float32') y: number = 0;
 }
 
 export class Pet extends Schema {
   @type('string') id: string = '';
   @type('string') petType: string = '';
-  @type('number') x: number = 0;
-  @type('number') z: number = 0;
-  @type('number') rotY: number = 0;
+  @type('float32') x: number = 0;
+  @type('float32') z: number = 0;
+  @type('float32') rotY: number = 0;
   @type('string') anim: PetAnim = 'idle';
   @type('number') hp: number = 100;
   @type('string') carrierId: string = '';

@@ -213,13 +213,13 @@ export function SceneEnvironment() {
         position={[18, 22, 10]}
         intensity={1.6}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0002}
-        shadow-normalBias={0.05}
-        shadow-camera-left={-26}
-        shadow-camera-right={26}
-        shadow-camera-top={24}
-        shadow-camera-bottom={-24}
+        shadow-normalBias={0.06}
+        shadow-camera-left={-24}
+        shadow-camera-right={24}
+        shadow-camera-top={22}
+        shadow-camera-bottom={-22}
         shadow-camera-near={1}
         shadow-camera-far={60}
       />

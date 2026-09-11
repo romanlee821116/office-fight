@@ -28,7 +28,12 @@ interface Bounds {
   cx: number;
   cz: number;
   minY: number;
+  /** 模型最大邊長（未縮放），用來判斷是否值得投影 */
+  maxDim: number;
 }
+
+/** 縮放後最大邊長小於此值的裝飾品不投影（甜甜圈、杯子、鍵盤等），省下陰影 pass 的繪製 */
+const SHADOW_MIN_SIZE = 0.35;
 
 const boundsCache = new Map<string, Bounds>();
 const materialCache = new Map<string, MeshStandardMaterial>();
@@ -39,7 +44,12 @@ function getBounds(name: string, scene: Object3D): Bounds {
   if (cached) return cached;
   scene.updateMatrixWorld(true);
   box.setFromObject(scene, true);
-  const b = { cx: (box.min.x + box.max.x) / 2, cz: (box.min.z + box.max.z) / 2, minY: box.min.y };
+  const b = {
+    cx: (box.min.x + box.max.x) / 2,
+    cz: (box.min.z + box.max.z) / 2,
+    minY: box.min.y,
+    maxDim: Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z),
+  };
   boundsCache.set(name, b);
   return b;
 }
@@ -70,9 +80,13 @@ export function KitModel({ model, position = [0, 0, 0], rotY = 0, scale = KIT_SC
 
   const instance = useMemo(() => {
     const clone = scene.clone(true);
+    const castShadow = bounds.maxDim * scale >= SHADOW_MIN_SIZE;
     clone.traverse((obj) => {
+      // 家具是靜態的，凍結局部矩陣省去每幀重算
+      obj.updateMatrix();
+      obj.matrixAutoUpdate = false;
       if (!(obj instanceof Mesh)) return;
-      obj.castShadow = true;
+      obj.castShadow = castShadow;
       obj.receiveShadow = true;
       if (recolor && obj.material instanceof MeshStandardMaterial) {
         const mat = obj.material;
@@ -81,7 +95,7 @@ export function KitModel({ model, position = [0, 0, 0], rotY = 0, scale = KIT_SC
       }
     });
     return clone;
-  }, [scene, recolor]);
+  }, [scene, recolor, bounds, scale]);
 
   return (
     <group position={position} rotation={[0, rotY, 0]} scale={scale}>

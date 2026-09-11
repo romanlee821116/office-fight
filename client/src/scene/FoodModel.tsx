@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
-import { Mesh, type Object3D } from 'three';
+import { Box3, Mesh, type Object3D } from 'three';
 import { WEAPONS } from '@office/shared';
 
 /** 'burger' → /models/food/burger.glb；'gym/dumbbell' → /models/gym/dumbbell.glb */
@@ -18,19 +18,32 @@ interface FoodModelProps {
   rotation?: [number, number, number];
 }
 
-/** Kenney Food Kit 模型（原點在底部中心，1 unit = 1m），開啟投影 */
+/** 縮放後最大邊長小於此值的食物不投影（省陰影 pass） */
+const SHADOW_MIN_SIZE = 0.35;
+const sizeCache = new Map<string, number>();
+const box = new Box3();
+
+/** Kenney Food Kit 模型（原點在底部中心，1 unit = 1m） */
 export function FoodModel({ model, scale = 1, position = [0, 0, 0], rotation = [0, 0, 0] }: FoodModelProps) {
   const { scene } = useGLTF(foodUrl(model));
   const instance = useMemo<Object3D>(() => {
+    let maxDim = sizeCache.get(model);
+    if (maxDim === undefined) {
+      scene.updateMatrixWorld(true);
+      box.setFromObject(scene, true);
+      maxDim = Math.max(box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z);
+      sizeCache.set(model, maxDim);
+    }
+    const castShadow = maxDim * scale >= SHADOW_MIN_SIZE;
     const clone = scene.clone(true);
     clone.traverse((obj) => {
       if (obj instanceof Mesh) {
-        obj.castShadow = true;
+        obj.castShadow = castShadow;
         obj.receiveShadow = false;
       }
     });
     return clone;
-  }, [scene]);
+  }, [scene, model, scale]);
 
   return (
     <group position={position} rotation={rotation} scale={scale}>

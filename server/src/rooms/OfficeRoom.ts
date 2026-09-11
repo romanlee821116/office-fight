@@ -80,6 +80,8 @@ const SPEED_TOLERANCE = 1.6;
 const MIN_DT_MS = 10;
 
 interface ClientMeta {
+  /** 最後一次操作時間（僅伺服端，閒置判定用；不進同步 schema 以免高頻廣播） */
+  lastActivityAt: number;
   lastMoveAt: number;
   chatTimestamps: number[];
   lastAttackAt: number;
@@ -144,9 +146,8 @@ export class OfficeRoom extends Room<OfficeState> {
   /** 註冊訊息處理，並統一把任何操作記為活動時間（閒置判定用） */
   private onPlayerMessage<T>(type: string, handler: (client: Client, payload: T) => void): void {
     this.onMessage<T>(type, (client, payload) => {
-      const player = this.state.players.get(client.sessionId);
       const meta = this.meta.get(client.sessionId);
-      if (player) player.lastSeen = Date.now();
+      if (meta) meta.lastActivityAt = Date.now();
       if (meta?.idleWarned) {
         meta.idleWarned = false;
         client.send(Messages.idle, { kind: 'clear' } satisfies IdleEvent);
@@ -201,8 +202,7 @@ export class OfficeRoom extends Room<OfficeState> {
     }
     // 回到前景視為活動，清掉警告
     meta.hiddenSince = null;
-    const player = this.state.players.get(client.sessionId);
-    if (player) player.lastSeen = Date.now();
+    meta.lastActivityAt = Date.now();
     if (meta.idleWarned) {
       meta.idleWarned = false;
       client.send(Messages.idle, { kind: 'clear' } satisfies IdleEvent);
@@ -220,7 +220,7 @@ export class OfficeRoom extends Room<OfficeState> {
       if (!meta) continue;
 
       const hiddenFor = meta.hiddenSince ? now - meta.hiddenSince : 0;
-      const inactiveFor = now - player.lastSeen;
+      const inactiveFor = now - meta.lastActivityAt;
       const reason: IdleEvent['reason'] | null =
         hiddenFor >= IDLE.hiddenMs ? 'hidden' : inactiveFor >= IDLE.inactiveMs ? 'inactive' : null;
 
@@ -278,10 +278,10 @@ export class OfficeRoom extends Room<OfficeState> {
     player.duelWith = '';
     player.weaponId = '';
     player.ammo = 0;
-    player.lastSeen = Date.now();
 
     this.state.players.set(client.sessionId, player);
     this.meta.set(client.sessionId, {
+      lastActivityAt: Date.now(),
       lastMoveAt: 0,
       chatTimestamps: [],
       lastAttackAt: 0,
@@ -356,7 +356,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.z = resolved.z;
     player.rotY = rotY;
     player.anim = ANIMS.has(anim) ? anim : 'idle';
-    player.lastSeen = now;
+    meta.lastActivityAt = now;
     meta.lastMoveAt = now;
   }
 
@@ -378,7 +378,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.z = seat.z;
     player.rotY = seat.rotY;
     player.anim = seat.anim;
-    player.lastSeen = Date.now();
+    meta.lastActivityAt = Date.now();
     meta.lastMoveAt = Date.now();
   }
 
@@ -393,7 +393,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.x = point.x;
     player.z = point.z;
     player.anim = 'idle';
-    player.lastSeen = Date.now();
+    meta.lastActivityAt = Date.now();
     meta.lastMoveAt = Date.now();
   }
 
@@ -561,8 +561,10 @@ export class OfficeRoom extends Room<OfficeState> {
     target.z = to.z;
     target.rotY = Math.atan2(-dirX, -dirZ); // 面向攻擊者
     target.hp = Math.max(0, target.hp - weapon.damage);
-    target.lastSeen = now;
-    if (targetMeta) targetMeta.lastMoveAt = now;
+    if (targetMeta) {
+      targetMeta.lastActivityAt = now;
+      targetMeta.lastMoveAt = now;
+    }
 
     const killed = target.hp === 0;
     if (killed) {

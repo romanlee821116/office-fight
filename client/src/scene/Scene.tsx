@@ -34,7 +34,7 @@ export function Scene() {
       shadows="soft"
       camera={{ fov: 40, near: 0.5, far: 200, position: [12, 12, 12] }}
       dpr={[1, 1.75]}
-      gl={{ antialias: true }}
+      gl={{ antialias: true, powerPreference: 'high-performance' }}
     >
       <fog attach="fog" args={['#DFE8F0', 45, 90]} />
       <SceneEnvironment />
