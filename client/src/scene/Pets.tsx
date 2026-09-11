@@ -2,7 +2,7 @@ import { Suspense, useMemo, useRef } from 'react';
 import { Html, useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { LoopRepeat, Mesh, type Group } from 'three';
-import { PET, PETS, getPet, type PetAnim } from '@office/shared';
+import { PET, PETS, getPet, petSizeFactor, type PetAnim } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { toLit } from './Avatar';
 import { local, petTargets, remoteTargets } from './runtime';
@@ -39,8 +39,9 @@ function PetTag({ id }: { id: string }) {
   if (!pet) return null;
   const def = getPet(pet.petType);
   const eating = pet.anim === 'eat';
+  const tagY = PET.tagHeight * petSizeFactor(pet.feedCount, PET.feedMax);
   return (
-    <Html position={[0, PET.tagHeight, 0]} center distanceFactor={14} zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
+    <Html position={[0, tagY, 0]} center distanceFactor={14} zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
       <div className="flex flex-col items-center gap-1 select-none" style={{ transform: 'translateY(-100%)' }}>
         {eating && (
           <div className="relative h-5 w-16">
@@ -87,6 +88,7 @@ function PetModel({ id, petType }: { id: string; petType: string }) {
 
   const { actions, mixer } = useAnimations(animations, body);
   const current = useRef<string | null>(null);
+  const scaleRef = useRef(PET.scale);
 
   useFrame((_state, dt) => {
     const g = group.current;
@@ -97,8 +99,14 @@ function PetModel({ id, petType }: { id: string; petType: string }) {
     if (t.fresh) {
       g.position.set(t.x, 0, t.z);
       g.rotation.y = t.rotY;
+      scaleRef.current = PET.scale * petSizeFactor(t.feedCount, PET.feedMax);
       t.fresh = false;
     }
+
+    // 體型隨餵食次數平滑長大
+    const targetScale = PET.scale * petSizeFactor(t.feedCount, PET.feedMax);
+    scaleRef.current += (targetScale - scaleRef.current) * (1 - Math.exp(-dt * 3));
+    b.scale.setScalar(scaleRef.current);
 
     // 被丟出去：本地播拋物線（落點由伺服端決定）
     if (t.flight) {
@@ -180,7 +188,7 @@ function PetModel({ id, petType }: { id: string; petType: string }) {
 
   return (
     <group ref={group}>
-      <group ref={body} scale={PET.scale}>
+      <group ref={body}>
         <primitive object={instance} />
       </group>
       <PetTag id={id} />

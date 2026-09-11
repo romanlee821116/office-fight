@@ -30,6 +30,8 @@ export interface PetInfo {
   carrierId: string;
   /** 目前動作（顯示進食愛心用） */
   anim: string;
+  /** 被餵了幾次（影響體型與名牌高度） */
+  feedCount: number;
 }
 
 export interface PickupInfo {

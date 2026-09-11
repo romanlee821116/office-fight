@@ -37,6 +37,7 @@ export class Pet extends Schema {
   @type('string') anim: PetAnim = 'idle';
   @type('number') hp: number = 100;
   @type('string') carrierId: string = '';
+  @type('number') feedCount: number = 0;
 }
 
 export class OfficeState extends Schema {

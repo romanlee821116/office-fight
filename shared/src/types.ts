@@ -247,6 +247,8 @@ export interface PetState {
   hp: number;
   /** 抱著牠的玩家 sessionId，空字串代表在地上 */
   carrierId: string;
+  /** 被餵了幾次（影響體型） */
+  feedCount: number;
 }
 
 /** S→C：寵物被丟出去的飛行資訊（命運已由伺服端決定，前端只播飛行視覺） */

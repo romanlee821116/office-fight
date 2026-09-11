@@ -94,6 +94,8 @@ export const PET = {
   area: { minX: -11, maxX: 19, minZ: -7, maxZ: 7 },
   /** 名牌高度 */
   tagHeight: 1.15,
+  /** 最多餵幾次；餵滿時體型為兩倍 */
+  feedMax: 5,
   /** 抱起的互動距離 */
   pickupRange: 1.5,
   /** 抱著時寵物在頭頂的高度 */

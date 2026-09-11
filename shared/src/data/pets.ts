@@ -23,3 +23,8 @@ export const PET_BY_ID = new Map(PETS.map((p) => [p.id, p]));
 export function getPet(id: string): PetDef {
   return PET_BY_ID.get(id) ?? PETS[0];
 }
+
+/** 體型倍率：每餵一次線性長大，餵滿 PET.feedMax 次為 2 倍 */
+export function petSizeFactor(feedCount: number, feedMax: number): number {
+  return 1 + Math.min(Math.max(feedCount, 0), feedMax) / feedMax;
+}

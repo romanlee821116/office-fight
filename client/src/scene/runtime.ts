@@ -33,6 +33,8 @@ export interface PetTarget {
   fresh: boolean;
   /** 抱著牠的玩家 sessionId */
   carrierId: string;
+  /** 被餵了幾次（影響體型） */
+  feedCount: number;
   /** 被丟出去的飛行資訊（前端本地播放拋物線） */
   flight: { fromX: number; fromZ: number; toX: number; toZ: number; startAt: number; durationMs: number } | null;
 }

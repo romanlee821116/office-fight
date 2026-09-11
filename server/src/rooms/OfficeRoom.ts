@@ -10,6 +10,7 @@ import {
   PET_EAT_MS,
   STOVE,
   getPet,
+  petSizeFactor,
   DUMBBELL_RACK_SLOTS,
   PICKUPS,
   SEAT_BY_ID,
@@ -861,7 +862,7 @@ export class OfficeRoom extends Room<OfficeState> {
           continue;
         }
         const step = (PET.walkSpeed * PET.aiTickMs) / 1000;
-        const next = moveWithCollision({ x: pet.x, z: pet.z }, (dx / dist) * step, (dz / dist) * step, PET.radius);
+        const next = moveWithCollision({ x: pet.x, z: pet.z }, (dx / dist) * step, (dz / dist) * step, PET.radius * petSizeFactor(pet.feedCount, PET.feedMax));
         // 幾乎沒前進代表被家具卡住，放棄這個目標
         if (Math.hypot(next.x - pet.x, next.z - pet.z) < step * 0.2) {
           this.setPetIdle(ai, pet, now);
@@ -993,9 +994,18 @@ export class OfficeRoom extends Room<OfficeState> {
     pet.hp = PET.maxHp;
     pet.anim = 'eat';
     pet.rotY = Math.atan2(player.x - pet.x, player.z - pet.z); // 面向餵食的人
+    const grew = pet.feedCount < PET.feedMax;
+    if (grew) pet.feedCount += 1;
     const now = Date.now();
     this.petAi.set(pet.id, { mode: 'idle', until: now + PET_EAT_MS, tx: pet.x, tz: pet.z, staggerUntil: now + PET_EAT_MS });
-    this.broadcastSystem(`🐾 ${player.name} 餵${getPet(pet.petType).name}吃了${weapon.name}`);
+    const name = getPet(pet.petType).name;
+    this.broadcastSystem(
+      grew
+        ? pet.feedCount === PET.feedMax
+          ? `🐾 ${player.name} 餵${name}吃了${weapon.name}，${name}長成超巨大了！`
+          : `🐾 ${player.name} 餵${name}吃了${weapon.name}，${name}長大了一點`
+        : `🐾 ${player.name} 餵${name}吃了${weapon.name}，但${name}已經吃得超飽`,
+    );
   }
 
   // ---------- 瓦斯爐 ----------
@@ -1090,7 +1100,8 @@ export class OfficeRoom extends Room<OfficeState> {
   /** 對寵物結算一次命中：擊退、扣血、倒地與重生排程 */
   private applyHitToPet(attacker: Player, pet: Pet, dirX: number, dirZ: number, weapon: WeaponDef, impactOffset: number): void {
     const now = Date.now();
-    const kb = weapon.knockback * PET.knockbackFactor;
+    // 吃越胖越重，擊退距離隨體型縮短
+    const kb = (weapon.knockback * PET.knockbackFactor) / petSizeFactor(pet.feedCount, PET.feedMax);
     const to = moveWithCollision({ x: pet.x, z: pet.z }, dirX * kb, dirZ * kb, PET.radius);
     const impactX = impactOffset ? attacker.x + dirX * impactOffset : pet.x;
     const impactZ = impactOffset ? attacker.z + dirZ * impactOffset : pet.z;
