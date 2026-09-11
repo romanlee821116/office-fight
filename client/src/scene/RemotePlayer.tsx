@@ -4,6 +4,7 @@ import type { Group } from 'three';
 import { getAvatar, type AnimState } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
+import { FireFX } from './FireFX';
 import { NameTag } from './NameTag';
 import { remoteTargets } from './runtime';
 
@@ -27,6 +28,7 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
   const avatar = getAvatar(avatarId);
   const weaponId = useGame((s) => s.players[sessionId]?.weaponId ?? '');
   const carrying = useGame((s) => Object.values(s.pets).some((p) => p.carrierId === sessionId));
+  const onFire = useGame((s) => s.players[sessionId]?.onFire ?? false);
 
   useFrame((_state, dt) => {
     const g = group.current;
@@ -61,6 +63,7 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
   return (
     <group ref={group}>
       <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+      {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       <NameTag sessionId={sessionId} />
     </group>
   );

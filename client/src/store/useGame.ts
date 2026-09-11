@@ -13,6 +13,8 @@ export interface PlayerInfo {
   seatId: string;
   fightMode: boolean;
   hp: number;
+  /** 被爐火燒到，頭上冒火中 */
+  onFire: boolean;
   /** 決鬥對手 sessionId，空字串代表未在決鬥 */
   duelWith: string;
   /** 手上的武器 id，空字串代表拳頭 */
@@ -89,6 +91,10 @@ interface GameState {
   nearPickupId: string | null;
   /** 本地玩家附近可抱起的寵物 */
   nearPetId: string | null;
+  /** 本地玩家是否在瓦斯爐互動範圍內 */
+  nearStove: boolean;
+  /** 瓦斯爐狀態（伺服端同步） */
+  stove: { foodId: string; stage: string };
   /** 地上的武器 */
   pickups: Record<string, PickupInfo>;
   /** 辦公室寵物 */
@@ -124,6 +130,8 @@ interface GameState {
   setNearSeat: (seatId: string | null) => void;
   setNearPickup: (pickupId: string | null) => void;
   setNearPet: (petId: string | null) => void;
+  setNearStove: (near: boolean) => void;
+  setStove: (stove: { foodId: string; stage: string }) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
   upsertPet: (pet: PetInfo) => void;
@@ -152,6 +160,8 @@ const initial = {
   nearSeatId: null,
   nearPickupId: null,
   nearPetId: null,
+  nearStove: false,
+  stove: { foodId: '', stage: '' },
   pickups: {},
   pets: {},
   seated: false,
@@ -210,6 +220,8 @@ export const useGame = create<GameState>((set) => ({
   setNearSeat: (nearSeatId) => set((s) => (s.nearSeatId === nearSeatId ? s : { nearSeatId })),
   setNearPickup: (nearPickupId) => set((s) => (s.nearPickupId === nearPickupId ? s : { nearPickupId })),
   setNearPet: (nearPetId) => set((s) => (s.nearPetId === nearPetId ? s : { nearPetId })),
+  setNearStove: (nearStove) => set((s) => (s.nearStove === nearStove ? s : { nearStove })),
+  setStove: (stove) => set({ stove }),
   upsertPickup: (pickup) => set((s) => ({ pickups: { ...s.pickups, [pickup.id]: pickup } })),
   removePickup: (id) =>
     set((s) => {

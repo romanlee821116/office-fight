@@ -136,6 +136,8 @@ export interface PlayerState {
   weaponId: string;
   /** 射擊類武器剩餘彈藥 */
   ammo: number;
+  /** 被爐火燒到，頭上冒火中 */
+  onFire: boolean;
   lastSeen: number;
 }
 
@@ -167,6 +169,8 @@ export interface WeaponDef {
   spawnable?: boolean;
   /** 非格鬥模式下按空白鍵的運動動作 */
   exercise?: AnimState;
+  /** 是食物：可以放上瓦斯爐、可以餵寵物 */
+  edible?: boolean;
 }
 
 /** 地上可撿的武器 */
@@ -230,7 +234,7 @@ export type DuelEvent =
   | { kind: 'end'; winnerId: string; winnerName: string; loserId: string; loserName: string; reason: 'ko' | 'forfeit' };
 
 /** 寵物動作（伺服端 AI 驅動） */
-export type PetAnim = 'idle' | 'walk' | 'dance' | 'hit' | 'thrown' | 'dead';
+export type PetAnim = 'idle' | 'walk' | 'dance' | 'hit' | 'thrown' | 'eat' | 'dead';
 
 /** 前端讀取寵物 state 的結構型別（伺服端以 Schema 實作） */
 export interface PetState {
@@ -342,6 +346,9 @@ export const Messages = {
   petDrop: 'petDrop',
   petThrow: 'petThrow',
   petFlight: 'petFlight',
+  stovePlace: 'stovePlace',
+  stoveTake: 'stoveTake',
+  feedPet: 'feedPet',
   chat: 'chat',
   system: 'system',
 } as const;

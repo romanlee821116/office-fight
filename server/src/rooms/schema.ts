@@ -16,6 +16,7 @@ export class Player extends Schema {
   @type('string') duelWith: string = '';
   @type('string') weaponId: string = '';
   @type('number') ammo: number = 0;
+  @type('boolean') onFire: boolean = false;
   @type('number') lastSeen: number = 0;
 }
 
@@ -42,4 +43,8 @@ export class OfficeState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Pickup }) pickups = new MapSchema<Pickup>();
   @type({ map: Pet }) pets = new MapSchema<Pet>();
+  /** 瓦斯爐上的食物（weapon id，空字串 = 沒有） */
+  @type('string') stoveFoodId: string = '';
+  /** '' | 'cooking' | 'burning' */
+  @type('string') stoveStage: string = '';
 }

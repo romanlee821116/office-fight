@@ -18,6 +18,7 @@ const CLIP_BY_ANIM: Record<PetAnim, string> = {
   dance: 'dance',
   hit: 'gesture-negative',
   thrown: 'run', // 飛行中腳亂踢
+  eat: 'eat',
   dead: 'idle',
 };
 const SNAP_DISTANCE = 4;

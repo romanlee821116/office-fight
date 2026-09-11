@@ -6,6 +6,7 @@ import { CameraRig } from './CameraRig';
 import { LocalPlayer } from './LocalPlayer';
 import { Office } from './Office';
 import { Pets } from './Pets';
+import { Stove } from './Stove';
 import { Pickups } from './Pickups';
 import { Projectiles } from './Projectiles';
 import { RemotePlayer } from './RemotePlayer';
@@ -59,6 +60,7 @@ export function Scene() {
       <LocalPlayer />
       <RemotePlayers />
       <Pets />
+      <Stove />
       <Pickups />
       <Projectiles />
       <BloodParticles />

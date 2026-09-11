@@ -7,6 +7,8 @@ import {
   IDLE,
   PET,
   PETS,
+  PET_EAT_MS,
+  STOVE,
   getPet,
   DUMBBELL_RACK_SLOTS,
   PICKUPS,
@@ -80,6 +82,8 @@ interface ClientMeta {
   chatTimestamps: number[];
   lastAttackAt: number;
   respawnTimer: { clear(): void } | null;
+  /** 最後一次被爐火燒到的時間 */
+  lastBurnAt: number;
   /** 分頁切到背景的時間戳，null 代表分頁在前景 */
   hiddenSince: number | null;
   /** 已發出閒置警告，避免重複發送 */
@@ -131,6 +135,9 @@ export class OfficeRoom extends Room<OfficeState> {
   private projectileSeq = 0;
   private petSeq = 0;
   private petAi = new Map<string, PetAi>();
+  private stoveBurnTimer: { clear(): void } | null = null;
+  private stoveGoneTimer: { clear(): void } | null = null;
+  private stovePlacedBy = '';
 
   /** 註冊訊息處理，並統一把任何操作記為活動時間（閒置判定用） */
   private onPlayerMessage<T>(type: string, handler: (client: Client, payload: T) => void): void {
@@ -162,6 +169,9 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<{ petId: string }>(Messages.petPickup, (client, payload) => this.handlePetPickup(client, payload));
     this.onPlayerMessage(Messages.petDrop, (client) => this.handlePetDrop(client));
     this.onPlayerMessage(Messages.petThrow, (client) => this.handlePetThrow(client));
+    this.onPlayerMessage<{ petId: string }>(Messages.feedPet, (client, payload) => this.handleFeedPet(client, payload));
+    this.onPlayerMessage(Messages.stovePlace, (client) => this.handleStovePlace(client));
+    this.onPlayerMessage(Messages.stoveTake, (client) => this.handleStoveTake(client));
     // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
     this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
@@ -172,6 +182,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
     for (let i = 0; i < PET.count; i++) this.spawnPet(false);
     this.clock.setInterval(() => this.tickPets(), PET.aiTickMs);
+    this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
 
     logger.info(`房間建立：${this.roomId}`);
   }
@@ -270,6 +281,7 @@ export class OfficeRoom extends Room<OfficeState> {
       chatTimestamps: [],
       lastAttackAt: 0,
       respawnTimer: null,
+      lastBurnAt: 0,
       hiddenSince: null,
       idleWarned: false,
     });
@@ -838,7 +850,7 @@ export class OfficeRoom extends Room<OfficeState> {
       const ai = this.petAi.get(pet.id);
       if (!ai || pet.anim === 'dead' || pet.anim === 'thrown') continue;
       if (now < ai.staggerUntil) continue;
-      if (pet.anim === 'hit') pet.anim = 'idle'; // 僵直結束
+      if (pet.anim === 'hit' || pet.anim === 'eat') pet.anim = 'idle'; // 僵直 / 進食結束
 
       if (ai.mode === 'walk') {
         const dx = ai.tx - pet.x;
@@ -966,6 +978,115 @@ export class OfficeRoom extends Room<OfficeState> {
     }, durationMs);
   }
 
+  /** 拿著食物餵寵物：食物消耗、寵物回滿血並播進食動畫 */
+  private handleFeedPet(client: Client, payload: { petId: string }): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId) return;
+    const weapon = WEAPON_BY_ID.get(player.weaponId);
+    if (!weapon?.edible) return;
+    const pet = this.state.pets.get(payload?.petId ?? '');
+    if (!pet || pet.carrierId || pet.anim === 'dead' || pet.anim === 'thrown') return;
+    if (Math.hypot(pet.x - player.x, pet.z - player.z) > PET.pickupRange + 0.6) return;
+
+    player.weaponId = '';
+    player.ammo = 0;
+    pet.hp = PET.maxHp;
+    pet.anim = 'eat';
+    pet.rotY = Math.atan2(player.x - pet.x, player.z - pet.z); // 面向餵食的人
+    const now = Date.now();
+    this.petAi.set(pet.id, { mode: 'idle', until: now + PET_EAT_MS, tx: pet.x, tz: pet.z, staggerUntil: now + PET_EAT_MS });
+    this.broadcastSystem(`🐾 ${player.name} 餵${getPet(pet.petType).name}吃了${weapon.name}`);
+  }
+
+  // ---------- 瓦斯爐 ----------
+
+  private nearStove(player: Player): boolean {
+    return Math.hypot(player.x - STOVE.x, player.z - STOVE.z) <= STOVE.range + 0.6;
+  }
+
+  private clearStove(): void {
+    this.stoveBurnTimer?.clear();
+    this.stoveGoneTimer?.clear();
+    this.stoveBurnTimer = null;
+    this.stoveGoneTimer = null;
+    this.state.stoveFoodId = '';
+    this.state.stoveStage = '';
+  }
+
+  /** 把手上的食物放上瓦斯爐；放太久會燒起來、再久化成灰 */
+  private handleStovePlace(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId) return;
+    const weapon = WEAPON_BY_ID.get(player.weaponId);
+    if (!weapon?.edible) return;
+    if (this.state.stoveFoodId || !this.nearStove(player)) return;
+
+    player.weaponId = '';
+    player.ammo = 0;
+    this.state.stoveFoodId = weapon.id;
+    this.state.stoveStage = 'cooking';
+    this.stovePlacedBy = player.name;
+    this.broadcastSystem(`🍳 ${player.name} 把${weapon.name}放上了爐子`);
+
+    this.stoveBurnTimer = this.clock.setTimeout(() => {
+      if (this.state.stoveStage !== 'cooking') return;
+      this.state.stoveStage = 'burning';
+      this.broadcastSystem(`🔥 爐子上的${weapon.name}燒起來了！`);
+      this.stoveGoneTimer = this.clock.setTimeout(() => {
+        if (this.state.stoveStage !== 'burning') return;
+        this.clearStove();
+        this.broadcastSystem(`💨 ${this.stovePlacedBy} 留在爐子上的${weapon.name}燒成灰了…`);
+      }, STOVE.goneAfterMs);
+    }, STOVE.burnAfterMs);
+  }
+
+  /** 空手把煎著的食物拿回來（燒起來就拿不回來了） */
+  private handleStoveTake(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId || player.weaponId) return;
+    if (this.state.stoveStage !== 'cooking' || !this.nearStove(player)) return;
+    const weapon = WEAPON_BY_ID.get(this.state.stoveFoodId);
+    this.clearStove();
+    if (!weapon) return;
+    player.weaponId = weapon.id;
+    player.ammo = weapon.ammo ?? 0;
+  }
+
+  /** 爐火延燒：著火時靠近的玩家持續掉血並冒火，離開一段時間後熄滅 */
+  private tickStoveBurn(): void {
+    const now = Date.now();
+    const burning = this.state.stoveStage === 'burning';
+    for (const player of this.state.players.values()) {
+      const meta = this.meta.get(player.id);
+      if (!meta) continue;
+      const inRange = burning && player.hp > 0 && Math.hypot(player.x - STOVE.x, player.z - STOVE.z) <= STOVE.burnRadius;
+      if (inRange) {
+        meta.lastBurnAt = now;
+        player.onFire = true;
+        player.hp = Math.max(0, player.hp - STOVE.burnDamage);
+        if (player.hp === 0) this.killByFire(player);
+      } else if (player.onFire && now - meta.lastBurnAt > STOVE.fireLingerMs) {
+        player.onFire = false;
+      }
+    }
+  }
+
+  private killByFire(player: Player): void {
+    player.anim = 'dead';
+    this.dropWeapon(player);
+    this.dropCarriedPet(player.id);
+    if (player.duelWith) {
+      const opponent = this.state.players.get(player.duelWith);
+      if (opponent) this.endDuel(opponent, player, 'ko');
+    }
+    this.broadcastSystem(`🔥 ${player.name} 被爐火燒倒了！`);
+    logger.info(`爐火擊倒：${player.name}`);
+    const meta = this.meta.get(player.id);
+    meta?.respawnTimer?.clear();
+    const playerId = player.id;
+    if (meta) meta.respawnTimer = this.clock.setTimeout(() => this.respawn(playerId), FIGHT.respawnMs);
+  }
+
   /** 對寵物結算一次命中：擊退、扣血、倒地與重生排程 */
   private applyHitToPet(attacker: Player, pet: Pet, dirX: number, dirZ: number, weapon: WeaponDef, impactOffset: number): void {
     const now = Date.now();
@@ -1043,6 +1164,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.hp = FIGHT.maxHp;
     player.anim = 'idle';
     player.seatId = '';
+    player.onFire = false;
     if (meta) meta.lastMoveAt = Date.now();
     const event: RespawnEvent = { sessionId, x: spawn.x, z: spawn.z };
     this.broadcast(Messages.respawn, event);

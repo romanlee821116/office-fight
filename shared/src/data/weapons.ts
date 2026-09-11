@@ -8,6 +8,7 @@ import type { WeaponDef } from '../types';
 export const WEAPONS: WeaponDef[] = [
   {
     id: 'baguette',
+    edible: true,
     name: '法國麵包',
     model: 'loaf-baguette',
     kind: 'melee',
@@ -20,6 +21,7 @@ export const WEAPONS: WeaponDef[] = [
   },
   {
     id: 'chicken',
+    edible: true,
     name: '烤雞腿',
     model: 'turkey',
     kind: 'melee',
@@ -32,6 +34,7 @@ export const WEAPONS: WeaponDef[] = [
   },
   {
     id: 'burger',
+    edible: true,
     name: '漢堡',
     model: 'burger',
     kind: 'throw',
@@ -45,6 +48,7 @@ export const WEAPONS: WeaponDef[] = [
   },
   {
     id: 'soda',
+    edible: true,
     name: '飲料罐',
     model: 'soda-can',
     kind: 'throw',
@@ -58,6 +62,7 @@ export const WEAPONS: WeaponDef[] = [
   },
   {
     id: 'cake',
+    edible: true,
     name: '蛋糕（噴奶油）',
     model: 'cake',
     kind: 'shoot',

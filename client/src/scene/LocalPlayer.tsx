@@ -8,6 +8,7 @@ import {
   PICKUPS,
   RUN_SPEED,
   SEAT_BY_ID,
+  STOVE,
   SYNC_INTERVAL_MS,
   WALK_SPEED,
   findNearestSeat,
@@ -16,9 +17,23 @@ import {
   moveWithCollision,
   type AnimState,
 } from '@office/shared';
-import { sendAttack, sendDrop, sendMove, sendPetDrop, sendPetPickup, sendPetThrow, sendPickup, sendSit, sendStand } from '../net/client';
+import {
+  sendAttack,
+  sendDrop,
+  sendFeedPet,
+  sendMove,
+  sendPetDrop,
+  sendPetPickup,
+  sendPetThrow,
+  sendPickup,
+  sendSit,
+  sendStand,
+  sendStovePlace,
+  sendStoveTake,
+} from '../net/client';
 import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
+import { FireFX } from './FireFX';
 import { NameTag } from './NameTag';
 import { canAttack, local, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote } from './runtime';
 import { useKeyboard } from './useKeyboard';
@@ -132,6 +147,20 @@ export function LocalPlayer() {
         if (canAttack(performance.now())) sendAttack();
         return;
       }
+      if (e.code === 'KeyF') {
+        // 拿著食物：餵附近的寵物，否則放上瓦斯爐
+        if (local.dead || local.seatId) return;
+        const st = useGame.getState();
+        if (carriedPetId(st.me?.sessionId)) return; // 抱著寵物時手上的食物先留著
+        const weapon = getWeapon(local.weaponId);
+        if (!weapon?.edible) return;
+        if (st.nearPetId) {
+          sendFeedPet(st.nearPetId);
+        } else if (st.nearStove && !st.stove.foodId) {
+          sendStovePlace();
+        }
+        return;
+      }
       if (e.code === 'KeyQ') {
         if (!local.dead && local.weaponId) sendDrop();
         return;
@@ -148,6 +177,8 @@ export function LocalPlayer() {
           sendPetDrop(); // 抱著寵物時 E 是輕輕放下
         } else if (nearPetId) {
           sendPetPickup(nearPetId);
+        } else if (state.nearStove && state.stove.stage === 'cooking' && !local.weaponId) {
+          sendStoveTake(); // 空手把煎著的食物拿回來
         } else if (nearPickupId) {
           sendPickup(nearPickupId);
         } else if (nearSeatId) {
@@ -278,6 +309,7 @@ export function LocalPlayer() {
       useGame.getState().setNearSeat(seat?.id ?? null);
       useGame.getState().setNearPickup(nearestPickup(local.x, local.z));
       useGame.getState().setNearPet(nearestPet(local.x, local.z));
+      useGame.getState().setNearStove(Math.hypot(local.x - STOVE.x, local.z - STOVE.z) <= STOVE.range);
     }
 
     // 20Hz 上傳；靜止且無變化時不重複送
@@ -299,12 +331,14 @@ export function LocalPlayer() {
 
   const weaponId = useGame((s) => (me ? s.players[me.sessionId]?.weaponId : '') ?? '');
   const carrying = useGame((s) => (me ? Object.values(s.pets).some((p) => p.carrierId === me.sessionId) : false));
+  const onFire = useGame((s) => (me ? (s.players[me.sessionId]?.onFire ?? false) : false));
   if (!me) return null;
   const avatar = getAvatar(me.avatarId);
 
   return (
     <group ref={group}>
       <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+      {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       <NameTag sessionId={me.sessionId} isMe />
       {/* 腳下標示圈 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>

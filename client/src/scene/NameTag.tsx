@@ -38,7 +38,7 @@ export function NameTag({ sessionId, isMe = false }: NameTagProps) {
             </>
           )}
         </div>
-        {player.fightMode && (
+        {(player.fightMode || player.hp < FIGHT.maxHp) && (
           <div className="h-1.5 w-20 overflow-hidden rounded-full bg-black/30">
             <div
               className={'h-full rounded-full transition-[width] duration-200 ' + (player.hp > 50 ? 'bg-emerald-400' : player.hp > 25 ? 'bg-amber-400' : 'bg-red-500')}

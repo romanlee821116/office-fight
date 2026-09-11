@@ -107,6 +107,33 @@ export const PET = {
   landStaggerMs: 1200,
 };
 
+/**
+ * 廚房瓦斯爐：拿著食物按 E 放上去煎，放太久會燒起來。
+ * 位置對應 furniture.ts 的 kitchen-run（中心 x -11.52, z 4.84）中 dx 1.29 的瓦斯爐。
+ */
+export const STOVE = {
+  x: -11.52,
+  z: 3.55,
+  /** 食物放在平底鍋上的高度 */
+  topY: 0.95,
+  /** 互動距離 */
+  range: 1.7,
+  /** 放上去多久後燒起來 */
+  burnAfterMs: 20000,
+  /** 燒起來多久後化成灰 */
+  goneAfterMs: 12000,
+  /** 著火時的延燒半徑：靠近會被燒到 */
+  burnRadius: 1.4,
+  /** 每次延燒判定的傷害與間隔 */
+  burnDamage: 6,
+  burnTickMs: 500,
+  /** 離開火源後頭上的火多久熄滅 */
+  fireLingerMs: 2000,
+};
+
+/** 餵寵物後進食動畫與 AI 暫停的時間 */
+export const PET_EAT_MS = 3000;
+
 /** 決鬥 */
 export const DUEL = {
   inviteTtlMs: 30000,

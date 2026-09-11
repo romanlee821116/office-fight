@@ -29,6 +29,8 @@ interface OfficeStateShape {
   players: Map<string, PlayerState>;
   pickups: Map<string, PickupState>;
   pets: Map<string, PetState>;
+  stoveFoodId: string;
+  stoveStage: string;
 }
 
 const ROOM_NAME = 'office';
@@ -131,6 +133,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         duelWith: player.duelWith,
         weaponId: player.weaponId,
         ammo: player.ammo,
+        onFire: player.onFire,
       });
     syncInfo();
 
@@ -142,6 +145,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     $(player).listen('duelWith', syncInfo);
     $(player).listen('weaponId', syncInfo);
     $(player).listen('ammo', syncInfo);
+    $(player).listen('onFire', syncInfo);
 
     if (isMe) {
       // 坐下 / 起身由伺服端決定位置與朝向，本地收到後直接套用
@@ -159,6 +163,16 @@ function bindRoom(r: Room<OfficeStateShape>): void {
       });
       $(player).listen('weaponId', (id) => {
         local.weaponId = id;
+      });
+      // 被爐火燒倒沒有 hit 事件，直接看血量歸零
+      $(player).listen('hp', (hp) => {
+        if (hp === 0 && !local.dead) {
+          local.dead = true;
+          local.seatId = '';
+          local.knockback = null;
+          useGame.getState().setSeated(false);
+          useGame.getState().setDeadUntil(Date.now() + FIGHT.respawnMs);
+        }
       });
     }
 
@@ -200,6 +214,12 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     $(pet).listen('hp', sync);
     $(pet).listen('carrierId', sync);
   });
+
+  // 瓦斯爐狀態
+  const syncStove = () =>
+    useGame.getState().setStove({ foodId: r.state.stoveFoodId ?? '', stage: r.state.stoveStage ?? '' });
+  $(r.state).listen('stoveFoodId', syncStove);
+  $(r.state).listen('stoveStage', syncStove);
 
   r.onMessage<PetFlightEvent>(Messages.petFlight, (ev) => {
     const t = petTargets.get(ev.petId);
@@ -430,6 +450,18 @@ export function sendPickup(pickupId: string): void {
 
 export function sendDrop(): void {
   room?.send(Messages.drop);
+}
+
+export function sendFeedPet(petId: string): void {
+  room?.send(Messages.feedPet, { petId });
+}
+
+export function sendStovePlace(): void {
+  room?.send(Messages.stovePlace);
+}
+
+export function sendStoveTake(): void {
+  room?.send(Messages.stoveTake);
 }
 
 export function sendPetPickup(petId: string): void {

@@ -1,5 +1,5 @@
 import { DANCES, EMOTES, SEAT_BY_ID, getPet, getWeapon, type DanceId, type EmoteId } from '@office/shared';
-import { sendPetDrop, sendPetPickup, sendPickup, sendSit, sendStand } from '../net/client';
+import { sendPetDrop, sendPetPickup, sendPickup, sendSit, sendStand, sendStoveTake } from '../net/client';
 import { toggleDance, triggerEmote } from '../scene/runtime';
 import { useGame } from '../store/useGame';
 
@@ -13,6 +13,12 @@ export function InteractionBar() {
   const meId = useGame((s) => s.me?.sessionId);
   const carriedPet = useGame((s) => (meId ? Object.values(s.pets).find((p) => p.carrierId === meId) : undefined));
   const nearPet = useGame((s) => (s.nearPetId ? s.pets[s.nearPetId] : undefined));
+  const nearStove = useGame((s) => s.nearStove);
+  const stove = useGame((s) => s.stove);
+  const myWeapon = useGame((s) => (meId ? s.players[meId]?.weaponId : '') ?? '');
+  const holdingFood = getWeapon(myWeapon)?.edible === true;
+  const canStoveTake = nearStove && stove.stage === 'cooking' && !myWeapon;
+  const stoveFoodName = stove.foodId ? getWeapon(stove.foodId)?.name : undefined;
 
   const onEmote = (id: EmoteId) => {
     triggerEmote(id);
@@ -23,7 +29,7 @@ export function InteractionBar() {
 
   return (
     <div className="pointer-events-none flex flex-col items-center gap-2">
-      {(seated || nearSeatId || nearPickup || nearPet || carriedPet) && (
+      {(seated || nearSeatId || nearPickup || nearPet || carriedPet || canStoveTake) && (
         <button
           type="button"
           onClick={() =>
@@ -33,9 +39,11 @@ export function InteractionBar() {
                 ? sendPetDrop()
                 : nearPet
                   ? sendPetPickup(nearPet.id)
-                  : nearPickup
-                    ? sendPickup(nearPickup.id)
-                    : nearSeatId && sendSit(nearSeatId)
+                  : canStoveTake
+                    ? sendStoveTake()
+                    : nearPickup
+                      ? sendPickup(nearPickup.id)
+                      : nearSeatId && sendSit(nearSeatId)
           }
           className="glass pointer-events-auto flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium cursor-pointer hover:bg-white"
         >
@@ -46,14 +54,22 @@ export function InteractionBar() {
               ? `放下 ${getPet(carriedPet.petType).name}`
               : nearPet
                 ? `抱起 ${getPet(nearPet.petType).name}`
-                : nearPickup
-                  ? `撿起 ${pickupName ?? '武器'}`
-                  : seatLabel}
+                : canStoveTake
+                  ? `拿回 ${stoveFoodName ?? '食物'}`
+                  : nearPickup
+                    ? `撿起 ${pickupName ?? '武器'}`
+                    : seatLabel}
         </button>
       )}
       {carriedPet && (
         <div className="glass pointer-events-none rounded-full px-3 py-1 text-xs opacity-80">
           <kbd className="rounded bg-ink/10 px-1 font-bold">空白鍵</kbd> 把{getPet(carriedPet.petType).name}丟出去
+        </div>
+      )}
+      {holdingFood && !carriedPet && (nearPet || (nearStove && !stove.foodId)) && (
+        <div className="glass pointer-events-auto rounded-full px-3 py-1 text-xs opacity-90">
+          <kbd className="rounded bg-ink/10 px-1 font-bold">F</kbd>{' '}
+          {nearPet ? `餵${getPet(nearPet.petType).name}吃${getWeapon(myWeapon)?.name}` : '把食物放上爐子'}
         </div>
       )}
       <div className={'glass pointer-events-auto flex flex-wrap justify-center gap-1 rounded-full p-1 ' + (seated ? 'opacity-50' : '')}>
