@@ -298,12 +298,13 @@ export function LocalPlayer() {
   });
 
   const weaponId = useGame((s) => (me ? s.players[me.sessionId]?.weaponId : '') ?? '');
+  const carrying = useGame((s) => (me ? Object.values(s.pets).some((p) => p.carrierId === me.sessionId) : false));
   if (!me) return null;
   const avatar = getAvatar(me.avatarId);
 
   return (
     <group ref={group}>
-      <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} />
+      <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
       <NameTag sessionId={me.sessionId} isMe />
       {/* 腳下標示圈 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>

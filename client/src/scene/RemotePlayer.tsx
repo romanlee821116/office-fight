@@ -26,6 +26,7 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
   const animRef = useRef<AnimState>('idle');
   const avatar = getAvatar(avatarId);
   const weaponId = useGame((s) => s.players[sessionId]?.weaponId ?? '');
+  const carrying = useGame((s) => Object.values(s.pets).some((p) => p.carrierId === sessionId));
 
   useFrame((_state, dt) => {
     const g = group.current;
@@ -59,7 +60,7 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
 
   return (
     <group ref={group}>
-      <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} />
+      <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
       <NameTag sessionId={sessionId} />
     </group>
   );

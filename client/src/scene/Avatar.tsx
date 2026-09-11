@@ -83,7 +83,15 @@ interface AvatarProps {
   animRef: { current: AnimState };
   /** 手上的武器 id（空字串為拳頭） */
   weaponId?: string;
+  /** 是否抱著寵物（雙手舉高） */
+  carrying?: boolean;
 }
+
+/** 抱寵物時的手臂姿勢：舉過頭頂、微微外開 */
+const CARRY_ARM_X = -2.75;
+const CARRY_ARM_Z = 0.28;
+/** 舉起 / 放下的過渡速度（每秒） */
+const CARRY_BLEND_SPEED = 6;
 
 const litCache = new Map<string, MeshStandardMaterial>();
 
@@ -98,7 +106,7 @@ export function toLit(mat: Material): Material {
   return lit;
 }
 
-function CharacterModel({ avatar, animRef, weaponId = '' }: AvatarProps) {
+function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: AvatarProps) {
   const { scene, animations } = useGLTF(characterUrl(avatar.model));
   const group = useRef<Group>(null);
   const [hand, setHand] = useState<Object3D | null>(null);
@@ -167,7 +175,9 @@ function CharacterModel({ avatar, animRef, weaponId = '' }: AvatarProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actions, mixer]);
 
-  useFrame(() => {
+  const carryWeight = useRef(0);
+
+  useFrame((_state, dt) => {
     const anim = animRef.current;
 
     // 跳舞 / 器材動作：暫停動畫混合器，直接由程式設定節點角度；所有客戶端用牆上時鐘算節拍以對拍
@@ -200,9 +210,21 @@ function CharacterModel({ avatar, animRef, weaponId = '' }: AvatarProps) {
     }
 
     const next = anim === 'idle' ? idleClip() : (CLIP_BY_ANIM[anim] ?? idleClip());
-    if (next === requested.current) return;
-    requested.current = next;
-    if (next !== current.current) playClip(next);
+    if (next !== requested.current) {
+      requested.current = next;
+      if (next !== current.current) playClip(next);
+    }
+
+    // 抱寵物：在動畫混合器之後覆寫手臂角度，讓雙手一直舉高（有舉起/放下的過渡）
+    const target = carrying ? 1 : 0;
+    const w = (carryWeight.current = Math.min(1, Math.max(0, carryWeight.current + (target * 2 - 1) * dt * CARRY_BLEND_SPEED)));
+    if (w > 0) {
+      const nodes = danceNodes.current;
+      if (nodes) {
+        nodes.armL.rotation.set(nodes.armL.rotation.x * (1 - w) + CARRY_ARM_X * w, nodes.armL.rotation.y * (1 - w), nodes.armL.rotation.z * (1 - w) + CARRY_ARM_Z * w);
+        nodes.armR.rotation.set(nodes.armR.rotation.x * (1 - w) + CARRY_ARM_X * w, nodes.armR.rotation.y * (1 - w), nodes.armR.rotation.z * (1 - w) - CARRY_ARM_Z * w);
+      }
+    }
   });
 
   return (
@@ -219,10 +241,10 @@ function CharacterModel({ avatar, animRef, weaponId = '' }: AvatarProps) {
  */
 AVATARS.forEach((a) => useGLTF.preload(characterUrl(a.model)));
 
-export function Avatar({ avatar, animRef, weaponId = '' }: AvatarProps) {
+export function Avatar({ avatar, animRef, weaponId = '', carrying = false }: AvatarProps) {
   return (
     <Suspense fallback={<AvatarPrimitive color={avatar.color} accent={avatar.accent} animRef={animRef} />}>
-      <CharacterModel avatar={avatar} animRef={animRef} weaponId={weaponId} />
+      <CharacterModel avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
     </Suspense>
   );
 }
