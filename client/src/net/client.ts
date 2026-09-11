@@ -31,6 +31,9 @@ interface OfficeStateShape {
   pets: Map<string, PetState>;
   stoveFoodId: string;
   stoveStage: string;
+  weatherCode: number;
+  weatherTemp: number;
+  weatherIsDay: boolean;
 }
 
 const ROOM_NAME = 'office';
@@ -233,6 +236,13 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     useGame.getState().setStove({ foodId: r.state.stoveFoodId ?? '', stage: r.state.stoveStage ?? '' });
   $(r.state).listen('stoveFoodId', syncStove);
   $(r.state).listen('stoveStage', syncStove);
+
+  // 天氣
+  const syncWeather = () =>
+    useGame.getState().setWeather({ code: r.state.weatherCode ?? -1, temp: r.state.weatherTemp ?? 0, isDay: r.state.weatherIsDay ?? true });
+  $(r.state).listen('weatherCode', syncWeather);
+  $(r.state).listen('weatherTemp', syncWeather);
+  $(r.state).listen('weatherIsDay', syncWeather);
 
   r.onMessage<PetFlightEvent>(Messages.petFlight, (ev) => {
     const t = petTargets.get(ev.petId);

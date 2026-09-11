@@ -1,4 +1,5 @@
 import { cancelReconnect, disconnect } from '../net/client';
+import { phaseLabel, weatherInfo } from '../lib/weather';
 import { useGame } from '../store/useGame';
 import { ChatPanel } from './ChatPanel';
 import { DuelOverlay } from './DuelOverlay';
@@ -12,6 +13,8 @@ export function Hud() {
   const phase = useGame((s) => s.phase);
   const error = useGame((s) => s.error);
   const reconnectStatus = useGame((s) => s.reconnectStatus);
+  const weather = useGame((s) => s.weather);
+  const wInfo = weatherInfo(weather.code);
 
   return (
     <div className="pointer-events-none absolute inset-0 flex flex-col p-4">
@@ -24,6 +27,11 @@ export function Hud() {
               <span className="text-[10px] opacity-40" title="建置時間">v{__BUILD_TIME__}</span>
             </div>
             <div className="text-[11px] opacity-60">WASD 移動 · Shift 加速 · E 坐下 · 1-3 表情 · 4-7 跳舞 · 拖曳旋轉 · 滾輪縮放</div>
+            {weather.code >= 0 && (
+              <div className="mt-0.5 text-[11px] opacity-70">
+                {wInfo.emoji} {weather.temp}°C {wInfo.label} · {phaseLabel(new Date().getHours() + new Date().getMinutes() / 60)}
+              </div>
+            )}
           </div>
           <FightPanel />
         </div>

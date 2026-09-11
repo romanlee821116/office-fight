@@ -48,4 +48,8 @@ export class OfficeState extends Schema {
   @type('string') stoveFoodId: string = '';
   /** '' | 'cooking' | 'burning' */
   @type('string') stoveStage: string = '';
+  /** WMO 天氣代碼，-1 = 尚未取得 */
+  @type('number') weatherCode: number = -1;
+  @type('number') weatherTemp: number = 0;
+  @type('boolean') weatherIsDay: boolean = true;
 }

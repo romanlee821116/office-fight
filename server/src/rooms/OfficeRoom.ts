@@ -9,6 +9,7 @@ import {
   PETS,
   PET_EAT_MS,
   STOVE,
+  WEATHER,
   getPet,
   petSizeFactor,
   DUMBBELL_RACK_SLOTS,
@@ -184,6 +185,9 @@ export class OfficeRoom extends Room<OfficeState> {
     for (let i = 0; i < PET.count; i++) this.spawnPet(false);
     this.clock.setInterval(() => this.tickPets(), PET.aiTickMs);
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
+
+    void this.refreshWeather();
+    this.clock.setInterval(() => void this.refreshWeather(), WEATHER.refreshMs);
 
     logger.info(`房間建立：${this.roomId}`);
   }
@@ -1218,6 +1222,26 @@ export class OfficeRoom extends Room<OfficeState> {
       list.push({ x: p.x, z: p.z });
     }
     return list;
+  }
+
+  /** 抓當地即時天氣寫進房間狀態；失敗就沿用上一次的資料 */
+  private async refreshWeather(): Promise<void> {
+    const lat = process.env.WEATHER_LAT ?? String(WEATHER.defaultLat);
+    const lon = process.env.WEATHER_LON ?? String(WEATHER.defaultLon);
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day&timezone=auto`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { current?: { temperature_2m?: number; weather_code?: number; is_day?: number } };
+      const current = data.current;
+      if (!current || typeof current.weather_code !== 'number') throw new Error('缺少 current 欄位');
+      this.state.weatherCode = current.weather_code;
+      this.state.weatherTemp = Math.round(current.temperature_2m ?? 0);
+      this.state.weatherIsDay = current.is_day !== 0;
+      logger.info(`天氣更新：code ${this.state.weatherCode}、${this.state.weatherTemp}°C、${this.state.weatherIsDay ? '白天' : '夜間'}`);
+    } catch (err) {
+      logger.warn('天氣更新失敗，沿用上一次資料', err instanceof Error ? err.message : err);
+    }
   }
 
   private broadcastSystem(text: string): void {

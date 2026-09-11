@@ -136,6 +136,14 @@ export const STOVE = {
 /** 餵寵物後進食動畫與 AI 暫停的時間 */
 export const PET_EAT_MS = 3000;
 
+/** 即時天氣：伺服端定時抓 Open-Meteo（免金鑰），全房間共用 */
+export const WEATHER = {
+  refreshMs: 30 * 60 * 1000,
+  /** 預設座標：台北（可用 WEATHER_LAT / WEATHER_LON 環境變數覆寫） */
+  defaultLat: 25.04,
+  defaultLon: 121.56,
+};
+
 /** 決鬥 */
 export const DUEL = {
   inviteTtlMs: 30000,

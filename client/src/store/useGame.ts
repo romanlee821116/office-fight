@@ -99,6 +99,8 @@ interface GameState {
   nearStove: boolean;
   /** 瓦斯爐狀態（伺服端同步） */
   stove: { foodId: string; stage: string };
+  /** 即時天氣（伺服端每 30 分鐘更新） */
+  weather: { code: number; temp: number; isDay: boolean };
   /** 地上的武器 */
   pickups: Record<string, PickupInfo>;
   /** 辦公室寵物 */
@@ -136,6 +138,7 @@ interface GameState {
   setNearPet: (petId: string | null) => void;
   setNearStove: (near: boolean) => void;
   setStove: (stove: { foodId: string; stage: string }) => void;
+  setWeather: (weather: { code: number; temp: number; isDay: boolean }) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
   upsertPet: (pet: PetInfo) => void;
@@ -166,6 +169,7 @@ const initial = {
   nearPetId: null,
   nearStove: false,
   stove: { foodId: '', stage: '' },
+  weather: { code: -1, temp: 0, isDay: true },
   pickups: {},
   pets: {},
   seated: false,
@@ -226,6 +230,7 @@ export const useGame = create<GameState>((set) => ({
   setNearPet: (nearPetId) => set((s) => (s.nearPetId === nearPetId ? s : { nearPetId })),
   setNearStove: (nearStove) => set((s) => (s.nearStove === nearStove ? s : { nearStove })),
   setStove: (stove) => set({ stove }),
+  setWeather: (weather) => set({ weather }),
   upsertPickup: (pickup) => set((s) => ({ pickups: { ...s.pickups, [pickup.id]: pickup } })),
   removePickup: (id) =>
     set((s) => {

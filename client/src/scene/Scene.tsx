@@ -3,6 +3,7 @@ import { ContactShadows, Stats } from '@react-three/drei';
 import { useGame } from '../store/useGame';
 import { BloodParticles } from './BloodParticles';
 import { CameraRig } from './CameraRig';
+import { SceneEnvironment } from './Environment';
 import { LocalPlayer } from './LocalPlayer';
 import { Office } from './Office';
 import { Pets } from './Pets';
@@ -35,25 +36,8 @@ export function Scene() {
       dpr={[1, 1.75]}
       gl={{ antialias: true }}
     >
-      <color attach="background" args={['#DFE8F0']} />
       <fog attach="fog" args={['#DFE8F0', 45, 90]} />
-
-      <ambientLight intensity={0.85} />
-      <hemisphereLight args={['#FFFFFF', '#C9B7A0', 0.5]} />
-      <directionalLight
-        position={[18, 22, 10]}
-        intensity={1.6}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-bias={-0.0002}
-        shadow-normalBias={0.05}
-        shadow-camera-left={-26}
-        shadow-camera-right={26}
-        shadow-camera-top={24}
-        shadow-camera-bottom={-24}
-        shadow-camera-near={1}
-        shadow-camera-far={60}
-      />
+      <SceneEnvironment />
 
       <Office />
       <ContactShadows position={[0, 0.01, 0]} opacity={0.25} scale={40} blur={2} far={4} resolution={512} frames={1} />
