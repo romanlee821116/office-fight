@@ -67,7 +67,7 @@ export const PICKUPS = {
 /** 辦公室寵物：伺服端 AI 隨機走動 / 停頓 / 跳舞，可被攻擊，死亡後重生新的一隻 */
 export const PET = {
   /** 同時在場數量 */
-  count: 1,
+  count: 3,
   maxHp: 100,
   /** 模型縮放（原始約 1.6～1.8 單位高） */
   scale: 0.45,

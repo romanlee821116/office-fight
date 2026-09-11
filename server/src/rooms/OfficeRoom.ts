@@ -815,7 +815,11 @@ export class OfficeRoom extends Room<OfficeState> {
 
   private spawnPet(announce = true): void {
     if (this.state.pets.size >= PET.count) return;
-    const def = PETS[Math.floor(Math.random() * PETS.length)];
+    // 盡量挑場上沒有的種類，避免同時三隻小貓
+    const inUse = new Set([...this.state.pets.values()].map((p) => p.petType));
+    const pool = PETS.filter((d) => !inUse.has(d.id));
+    const candidates = pool.length > 0 ? pool : PETS;
+    const def = candidates[Math.floor(Math.random() * candidates.length)];
     const pos = this.randomOpenPoint(PET.area, 20);
     if (!pos) return;
 
