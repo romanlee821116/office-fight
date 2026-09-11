@@ -36,6 +36,7 @@ const RUG: Recolor[] = [
 
 const DESK_TOP = 0.76;
 const COUNTER_TOP = 0.9;
+const BAR_TOP = 0.84;
 
 function deskRecipe(f: FurnitureDef): Part[] {
   const index = Number(f.id.split('-')[1] ?? 0);
@@ -65,13 +66,47 @@ const BY_ID: Record<string, Part[]> = {
     { model: 'books', dy: 0.8, dx: -0.35 },
     { model: 'radio', dy: 0.8, dx: 0.4 },
   ],
+  // 前排咖啡吧：四座下櫃 + 咖啡機 / 微波爐 / 甜甜圈盤 / 馬克杯
   counter: [
-    { model: 'kitchenCabinetDrawer', dx: -1.29 },
-    { model: 'kitchenSink', dx: -0.43 },
+    { model: 'kitchenCabinetDrawer', dx: -2.15 },
+    { model: 'kitchenCabinet', dx: -1.29 },
+    { model: 'kitchenCabinet', dx: -0.43 },
     { model: 'kitchenCabinet', dx: 0.43 },
-    { model: 'kitchenCabinet', dx: 1.29 },
-    { model: 'kitchenCoffeeMachine', dx: 0.43, dy: COUNTER_TOP },
+    { model: 'kitchenCabinetDrawer', dx: 1.29 },
+    { model: 'kitchenCoffeeMachine', dx: -1.29, dy: COUNTER_TOP },
     { model: 'kitchenMicrowave', dx: 1.29, dy: COUNTER_TOP },
+    { model: 'food/plate', dx: -0.43, dy: COUNTER_TOP, scale: 0.5 },
+    { model: 'food/donut-sprinkles', dx: -0.5, dy: COUNTER_TOP + 0.045, scale: 0.55 },
+    { model: 'food/donut-chocolate', dx: -0.34, dy: COUNTER_TOP + 0.045, scale: 0.55 },
+    { model: 'food/mug', dx: 0.4, dy: COUNTER_TOP, scale: 0.55, rotY: 0.6 },
+    { model: 'food/cup-coffee', dx: 0.66, dy: COUNTER_TOP, scale: 0.6, rotY: -0.4 },
+  ],
+  // 左牆料理檯：瓦斯爐（含抽油煙機與平底鍋）、水槽、抽屜櫃（烤麵包機）、下櫃（砧板與菜刀）
+  // 局部 +X 對應世界 -Z（rotY = π/2）
+  'kitchen-run': [
+    { model: 'kitchenStove', dx: 1.29 },
+    { model: 'hoodModern', dx: 1.29, dy: 1.42, dz: -0.14 },
+    { model: 'food/frying-pan', dx: 1.29, dy: COUNTER_TOP, scale: 0.6, rotY: Math.PI / 2 },
+    { model: 'kitchenSink', dx: 0.43 },
+    { model: 'kitchenCabinetDrawer', dx: -0.43 },
+    { model: 'toaster', dx: -0.43, dy: COUNTER_TOP, scale: 2 },
+    { model: 'kitchenCabinet', dx: -1.29 },
+    { model: 'food/cutting-board', dx: -1.29, dy: COUNTER_TOP, scale: 0.5, rotY: 0.3 },
+    { model: 'food/cooking-knife', dx: -1.22, dy: COUNTER_TOP + 0.02, scale: 0.5, rotY: 1.2 },
+  ],
+  // 早餐吧檯：三段吧檯 + 兩端封板，檯面放披薩、飲料與水果
+  'kitchen-bar': [
+    { model: 'kitchenBarEnd', dx: 1.39 },
+    { model: 'kitchenBar', dx: 0.86 },
+    { model: 'kitchenBar', dx: 0 },
+    { model: 'kitchenBar', dx: -0.86 },
+    { model: 'kitchenBarEnd', dx: -1.39, rotY: Math.PI },
+    { model: 'food/pizza', dx: 0.75, dy: BAR_TOP, scale: 0.7 },
+    { model: 'food/soda', dx: 0.1, dy: BAR_TOP, scale: 0.8 },
+    { model: 'food/soda', dx: -0.15, dy: BAR_TOP, scale: 0.8, rotY: 1.1 },
+    { model: 'food/plate', dx: -0.85, dy: BAR_TOP, scale: 0.45 },
+    { model: 'food/banana', dx: -0.9, dy: BAR_TOP + 0.04, scale: 0.6, rotY: 0.8 },
+    { model: 'food/apple', dx: -0.78, dy: BAR_TOP + 0.04, scale: 0.6 },
   ],
 };
 
@@ -100,6 +135,8 @@ const BY_TYPE: Partial<Record<string, Part[]>> = {
   rug: [{ model: 'rugRectangle', scale: 3, recolor: RUG }],
   trashcan: [{ model: 'trashcan' }],
   coatrack: [{ model: 'coatRackStanding' }],
+  stool: [{ model: 'stoolBar' }],
+  'kitchen-upper': [{ model: 'kitchenCabinetUpper' }],
   lamp: [{ model: 'lampRoundFloor' }],
 };
 

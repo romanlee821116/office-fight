@@ -74,9 +74,17 @@ export const FURNITURE: FurnitureDef[] = [
   { id: 'coffee-table', type: 'table', x: 7.5, z: 4.2, w: 1.35, d: 0.85, h: 0.46, color: '#B08968' },
   { id: 'lamp', type: 'prop', variant: 'lamp', x: 10.6, z: 6.4, w: 0.35, d: 0.35, h: 1.7, color: '#E9E4DE' },
 
-  // 茶水間（正面朝房間內側 -Z）
-  { id: 'counter', type: 'counter', x: -8.9, z: 6.9, w: 3.44, d: 0.9, h: 0.9, color: '#E9E4DE', rotY: Math.PI },
-  { id: 'fridge', type: 'fridge', x: -11.4, z: 6.9, w: 1.05, d: 0.85, h: 1.84, color: '#DCE3EA', rotY: Math.PI },
+  // 小廚房茶水間（左前角）：左牆料理檯（面向 +X）、前排咖啡吧（面向 -Z）、中間早餐吧檯與高腳椅
+  // rotY 只影響外觀，碰撞 w/d 已依世界座標軸換算
+  { id: 'fridge', type: 'fridge', x: -11.5, z: 2.45, w: 0.85, d: 1.05, h: 1.84, color: '#DCE3EA', rotY: Math.PI / 2 },
+  { id: 'kitchen-run', type: 'counter', x: -11.52, z: 4.84, w: 0.9, d: 3.44, h: 0.9, color: '#E9E4DE', rotY: Math.PI / 2 },
+  { id: 'kitchen-upper-0', type: 'prop', variant: 'kitchen-upper', x: -11.76, y: 1.45, z: 4.45, w: 0.45, d: 0.86, h: 0.78, color: '#E9E4DE', rotY: Math.PI / 2, solid: false },
+  { id: 'kitchen-upper-1', type: 'prop', variant: 'kitchen-upper', x: -11.76, y: 1.45, z: 5.31, w: 0.45, d: 0.86, h: 0.78, color: '#E9E4DE', rotY: Math.PI / 2, solid: false },
+  { id: 'counter', type: 'counter', x: -9.8, z: 7.4, w: 4.3, d: 0.9, h: 0.9, color: '#E9E4DE', rotY: Math.PI },
+  { id: 'kitchen-bar', type: 'counter', x: -8.6, z: 4.6, w: 0.42, d: 2.98, h: 0.84, color: '#D9B99B', rotY: Math.PI / 2 },
+  { id: 'stool-0', type: 'prop', variant: 'stool', x: -7.7, z: 3.74, w: 0.46, d: 0.54, h: 0.88, color: '#8A7A6A', rotY: -Math.PI / 2 },
+  { id: 'stool-1', type: 'prop', variant: 'stool', x: -7.7, z: 4.6, w: 0.46, d: 0.54, h: 0.88, color: '#8A7A6A', rotY: -Math.PI / 2 },
+  { id: 'stool-2', type: 'prop', variant: 'stool', x: -7.7, z: 5.46, w: 0.46, d: 0.54, h: 0.88, color: '#8A7A6A', rotY: -Math.PI / 2 },
 
   // 入口
   { id: 'coatrack', type: 'prop', variant: 'coatrack', x: -2.6, z: 7.3, w: 0.55, d: 0.55, h: 1.55, color: '#8A7A6A' },
