@@ -108,7 +108,19 @@ export const projectileQueue: ProjectileEvent[] = [];
 
 /** 匹克球目前這一拍的飛行（CourtBall 每幀讀取） */
 export const courtBall = {
-  flight: null as { fromX: number; fromZ: number; toX: number; toZ: number; arcH: number; startAt: number; durationMs: number } | null,
+  flight: null as {
+    fromX: number;
+    fromZ: number;
+    toX: number;
+    toZ: number;
+    arcH: number;
+    startAt: number;
+    durationMs: number;
+    bounceToX: number;
+    bounceToZ: number;
+    bounceMs: number;
+    bounceArcH: number;
+  } | null,
 };
 
 /** 套用伺服端的擊退結果 */

@@ -177,6 +177,14 @@ export const COURT = {
   ballSpeed: 8.5,
   flightMinMs: 650,
   flightMaxMs: 1500,
+  /** 第一次落地後的反彈：距離為原飛行的比例、時間比例與高度比例（第二次觸地才算失分） */
+  bounceDistFactor: 0.32,
+  bounceMsFactor: 0.55,
+  bounceArcFactor: 0.45,
+  bounceMsMin: 340,
+  bounceMsMax: 750,
+  /** 第二次觸地後的緩衝 */
+  secondTouchGraceMs: 120,
   /** 結束畫面停留時間，之後清場 */
   overResetMs: 6000,
 };

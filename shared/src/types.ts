@@ -283,6 +283,11 @@ export interface CourtShotEvent {
   flightMs: number;
   /** 拋物線最高點 */
   arcH: number;
+  /** 第一次落地後的反彈段（第二次觸地才算失分） */
+  bounceToX: number;
+  bounceToZ: number;
+  bounceMs: number;
+  bounceArcH: number;
 }
 
 /** S→C：閒置提醒與自動離開 */

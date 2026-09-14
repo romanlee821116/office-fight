@@ -145,7 +145,20 @@ export class OfficeRoom extends Room<OfficeState> {
   private petAi = new Map<string, PetAi>();
   private stoveBurnTimer: { clear(): void } | null = null;
   /** 匹克球：進行中那一拍的資訊（落地判定用） */
-  private courtShot: { shotId: number; toSide: CourtSide; toX: number; toZ: number; landAt: number; timer: { clear(): void } } | null = null;
+  private courtShot: {
+    shotId: number;
+    toSide: CourtSide;
+    shotAt: number;
+    fromX: number;
+    fromZ: number;
+    toX: number;
+    toZ: number;
+    flightMs: number;
+    bounceToX: number;
+    bounceToZ: number;
+    bounceMs: number;
+    timer: { clear(): void };
+  } | null = null;
   private courtTimer: { clear(): void } | null = null;
   private courtShotSeq = 0;
   private lastSwingAt = new Map<string, number>();
@@ -1385,17 +1398,44 @@ export class OfficeRoom extends Room<OfficeState> {
     const arcH = 1.35 + dist * 0.055;
     const shotId = ++this.courtShotSeq;
 
+    // 第一次落地後往前彈一小段，第二次觸地才算失分（可截擊也可等彈起）
+    const dirX = dist > 1e-6 ? (toX - fromX) / dist : 1;
+    const dirZ = dist > 1e-6 ? (toZ - fromZ) / dist : 0;
+    const bounceDist = clampNum(dist * COURT.bounceDistFactor, 0.8, 2.4);
+    const bounceToX = clampNum(toX + dirX * bounceDist, COURT.minX - 1.2, COURT.maxX + 1.2);
+    const bounceToZ = clampNum(toZ + dirZ * bounceDist, COURT.minZ - 1.6, COURT.maxZ + 1.6);
+    const bounceMs = clampNum(flightMs * COURT.bounceMsFactor, COURT.bounceMsMin, COURT.bounceMsMax);
+
     this.courtShot?.timer.clear();
     this.courtShot = {
       shotId,
       toSide,
+      shotAt: Date.now(),
+      fromX,
+      fromZ,
       toX,
       toZ,
-      landAt: Date.now() + flightMs,
-      timer: this.clock.setTimeout(() => this.courtBallLanded(shotId), flightMs),
+      flightMs,
+      bounceToX,
+      bounceToZ,
+      bounceMs,
+      timer: this.clock.setTimeout(() => this.courtBallLanded(shotId), flightMs + bounceMs + COURT.secondTouchGraceMs),
     };
-    const event: CourtShotEvent = { shotId, byId, fromX, fromZ, toX, toZ, flightMs, arcH };
+    const event: CourtShotEvent = { shotId, byId, fromX, fromZ, toX, toZ, flightMs, arcH, bounceToX, bounceToZ, bounceMs, bounceArcH: arcH * COURT.bounceArcFactor };
     this.broadcast(Messages.courtShot, event);
+  }
+
+  /** 球在飛行或反彈中的目前地面位置 */
+  private courtBallPosAt(now: number): { x: number; z: number } | null {
+    const shot = this.courtShot;
+    if (!shot) return null;
+    const t = now - shot.shotAt;
+    if (t <= shot.flightMs) {
+      const p = Math.max(0, t / shot.flightMs);
+      return { x: shot.fromX + (shot.toX - shot.fromX) * p, z: shot.fromZ + (shot.toZ - shot.fromZ) * p };
+    }
+    const tb = Math.min(1, (t - shot.flightMs) / shot.bounceMs);
+    return { x: shot.toX + (shot.bounceToX - shot.toX) * tb, z: shot.toZ + (shot.bounceToZ - shot.toZ) * tb };
   }
 
   /** 球落地沒人接到：打這拍的一方得分 */
@@ -1459,16 +1499,18 @@ export class OfficeRoom extends Room<OfficeState> {
     const shot = this.courtShot;
     if (!shot || this.state.courtStatus !== 'rally') return;
     if (shot.toSide !== side) return; // 球不是往你這邊飛
-    if (Math.abs(shot.landAt - now) > COURT.hitWindowMs) return; // 太早或太晚
-    if (Math.hypot(player.x - shot.toX, player.z - shot.toZ) > COURT.hitRange) return; // 人不到位
+    // 有效時間：第一次落地前的截擊窗，一直到反彈段結束（第二次觸地）
+    const firstLandAt = shot.shotAt + shot.flightMs;
+    const secondTouchAt = firstLandAt + shot.bounceMs;
+    if (now < firstLandAt - COURT.hitWindowMs || now > secondTouchAt + COURT.secondTouchGraceMs) return;
+    const ball = this.courtBallPosAt(now);
+    if (!ball || Math.hypot(player.x - ball.x, player.z - ball.z) > COURT.hitRange) return; // 人不在球邊
 
-    // 回擊成功：以落點為起點打回去，壓角由揮拍瞬間的面向決定
+    // 回擊成功：以球目前位置為起點打回去，壓角由揮拍瞬間的面向決定
     const lateral = clampNum((payload?.aimZ ?? 0) * 1.2, -1, 1);
-    const fromX = shot.toX;
-    const fromZ = shot.toZ;
     shot.timer.clear();
     this.courtShot = null;
-    this.launchShot(player.id, side === 'A' ? 'B' : 'A', fromX, fromZ, lateral);
+    this.launchShot(player.id, side === 'A' ? 'B' : 'A', ball.x, ball.z, lateral);
   }
 
   private broadcastSystem(text: string): void {

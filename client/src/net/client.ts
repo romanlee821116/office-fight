@@ -271,7 +271,19 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   $(r.state).listen('courtScoreB', syncCourt);
 
   r.onMessage<CourtShotEvent>(Messages.courtShot, (ev) => {
-    courtBall.flight = { fromX: ev.fromX, fromZ: ev.fromZ, toX: ev.toX, toZ: ev.toZ, arcH: ev.arcH, startAt: performance.now(), durationMs: ev.flightMs };
+    courtBall.flight = {
+      fromX: ev.fromX,
+      fromZ: ev.fromZ,
+      toX: ev.toX,
+      toZ: ev.toZ,
+      arcH: ev.arcH,
+      startAt: performance.now(),
+      durationMs: ev.flightMs,
+      bounceToX: ev.bounceToX,
+      bounceToZ: ev.bounceToZ,
+      bounceMs: ev.bounceMs,
+      bounceArcH: ev.bounceArcH,
+    };
     // 自動發球時發球者沒按空白鍵，補上揮拍動作
     if (ev.byId === r.sessionId) triggerSwing();
   });

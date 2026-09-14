@@ -51,6 +51,7 @@ export function Hud() {
             </div>
           </div>
           <FightPanel />
+          <CourtBanner />
         </div>
         <div className="flex flex-col items-end gap-2">
           <PlayerList />
@@ -65,7 +66,6 @@ export function Hud() {
       </div>
 
       <div className="mx-auto mt-3 flex flex-col items-center gap-2">
-        <CourtBanner />
         <IdleWarning />
         <DuelOverlay />
       </div>

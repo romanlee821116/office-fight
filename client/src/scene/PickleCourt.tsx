@@ -46,36 +46,78 @@ function Fence({ x, z, w, d }: { x: number; z: number; w: number; d: number }) {
   );
 }
 
-/** 飛行中的匹克球：依伺服端廣播的拋物線本地播放 */
+/** 落點提示：白色虛線圈（12 段短線組成，緩慢旋轉） */
+function LandingMarker({ markerRef }: { markerRef: React.RefObject<Group | null> }) {
+  const dashes = Array.from({ length: 12 }, (_, i) => (i / 12) * Math.PI * 2);
+  return (
+    <group ref={markerRef} visible={false} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.04, 0]}>
+      {dashes.map((a) => (
+        <mesh key={a} position={[Math.cos(a) * 0.45, Math.sin(a) * 0.45, 0]} rotation={[0, 0, a + Math.PI / 2]}>
+          <planeGeometry args={[0.16, 0.05]} />
+          <meshBasicMaterial color="#FFFFFF" transparent opacity={0.9} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** 飛行中的匹克球：主飛行＋落地反彈（第二次觸地才消失），並帶落點虛線提示 */
 function CourtBall() {
   const mesh = useRef<Mesh>(null);
-  useFrame(() => {
+  const marker = useRef<Group>(null);
+  useFrame((state, dt) => {
     const m = mesh.current;
-    if (!m) return;
+    const mk = marker.current;
+    if (!m || !mk) return;
     const b = courtBall.flight;
     if (!b) {
       m.visible = false;
+      mk.visible = false;
       return;
     }
-    const t = (performance.now() - b.startAt) / b.durationMs;
-    if (t >= 1.12) {
+    const now = performance.now();
+    const t = now - b.startAt;
+    const total = b.durationMs + b.bounceMs;
+    if (t >= total + 200) {
       courtBall.flight = null;
       m.visible = false;
+      mk.visible = false;
       return;
     }
-    const p = Math.min(1, t);
     m.visible = true;
-    m.position.set(
-      b.fromX + (b.toX - b.fromX) * p,
-      0.12 + Math.sin(Math.PI * p) * b.arcH + (t > 1 ? 0 : 0.75 * (1 - p)),
-      b.fromZ + (b.toZ - b.fromZ) * p,
-    );
+    if (t <= b.durationMs) {
+      // 主飛行
+      const p = Math.max(0, t / b.durationMs);
+      m.position.set(
+        b.fromX + (b.toX - b.fromX) * p,
+        0.12 + Math.sin(Math.PI * p) * b.arcH,
+        b.fromZ + (b.toZ - b.fromZ) * p,
+      );
+      // 落點提示在第一落點
+      mk.visible = true;
+      mk.position.set(b.toX, 0.04, b.toZ);
+    } else {
+      // 反彈段：較矮的小拋物線，第二次觸地後靜止一下消失
+      const pb = Math.min(1, (t - b.durationMs) / b.bounceMs);
+      m.position.set(
+        b.toX + (b.bounceToX - b.toX) * pb,
+        0.12 + Math.sin(Math.PI * pb) * b.bounceArcH,
+        b.toZ + (b.bounceToZ - b.toZ) * pb,
+      );
+      mk.visible = pb < 1;
+      mk.position.set(b.bounceToX, 0.04, b.bounceToZ);
+    }
+    mk.rotation.z += dt * 1.6;
+    void state;
   });
   return (
-    <mesh ref={mesh} visible={false} castShadow>
-      <sphereGeometry args={[0.11, 14, 12]} />
-      <meshStandardMaterial color="#E8F04A" emissive="#B8C020" emissiveIntensity={0.35} />
-    </mesh>
+    <>
+      <mesh ref={mesh} visible={false} castShadow>
+        <sphereGeometry args={[0.11, 14, 12]} />
+        <meshStandardMaterial color="#E8F04A" emissive="#B8C020" emissiveIntensity={0.35} />
+      </mesh>
+      <LandingMarker markerRef={marker} />
+    </>
   );
 }
 
