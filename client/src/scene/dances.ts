@@ -1,9 +1,16 @@
 import type { AnimState, DanceId } from '@office/shared';
 
 /** 由程式計算姿勢的動作（舞步 + 器材動作） */
-export type ProceduralAnim = DanceId | 'benchpress' | 'curl' | 'squat' | 'swing';
+export type ProceduralAnim = DanceId | 'benchpress' | 'benchpress-incline' | 'curl' | 'squat' | 'swing';
 export function isProcedural(anim: AnimState): anim is ProceduralAnim {
-  return anim === 'benchpress' || anim === 'curl' || anim === 'squat' || anim === 'swing' || anim.startsWith('dance-');
+  return (
+    anim === 'benchpress' ||
+    anim === 'benchpress-incline' ||
+    anim === 'curl' ||
+    anim === 'squat' ||
+    anim === 'swing' ||
+    anim.startsWith('dance-')
+  );
 }
 
 /** 一次性的程式動作（以觸發時間為 0 起算，而非牆上時鐘節拍） */
@@ -39,7 +46,7 @@ export function swingPose(t: number): DancePose {
   };
 }
 /** 各程式動作的節拍 */
-export const PROCEDURAL_BPM: Record<string, number> = { benchpress: 60, curl: 80, squat: 46 };
+export const PROCEDURAL_BPM: Record<string, number> = { benchpress: 60, 'benchpress-incline': 54, curl: 80, squat: 46 };
 
 /** 各節點的姿勢（角色模型單位、弧度）。root 的 y 為上下位移、rotY 為整體轉向 */
 export interface DancePose {
@@ -94,6 +101,23 @@ export function dancePose(id: ProceduralAnim, beat: number): DancePose {
         armR: [arm, 0, -0.35],
         legL: -1.2,
         legR: -1.2,
+      };
+    }
+    case 'benchpress-incline': {
+      // 斜板臥推：半躺約 35°、雙腳踩地，雙手向上推舉
+      const push = (Math.sin(b * Math.PI) + 1) / 2; // 0 手臂彎曲 → 1 推到頂
+      const arm = -1.5 + (1 - push) * 0.85;
+      return {
+        rootY: 1.24, // 椅墊較高（約 0.8m）
+        rootRotY: Math.PI,
+        rootRotX: Math.PI / 2 - 0.62, // 椅背傾角
+        rootZ: -0.95,
+        torso: [0, 0, 0],
+        head: [0.2, 0, 0],
+        armL: [arm, 0, 0.32],
+        armR: [arm, 0, -0.32],
+        legL: -0.62, // 腳踩在地上
+        legR: -0.62,
       };
     }
     case 'squat': {

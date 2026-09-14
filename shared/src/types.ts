@@ -11,6 +11,7 @@ export type AnimState =
   | 'hit'
   | 'dead'
   | 'benchpress'
+  | 'benchpress-incline'
   | 'curl'
   | 'squat'
   | 'swing'
@@ -49,6 +50,7 @@ export const ANIM_STATES: readonly AnimState[] = [
   'hit',
   'dead',
   'benchpress',
+  'benchpress-incline',
   'curl',
   'squat',
   'swing',

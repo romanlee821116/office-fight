@@ -8,7 +8,7 @@ import { toLit } from './Avatar';
 import { local, petTargets, remoteTargets } from './runtime';
 
 export function petUrl(model: string): string {
-  return `/models/pets/${model}.glb`;
+  return `/models/pets/${model}.glb?v=${__ASSET_VERSION__}`;
 }
 PETS.forEach((p) => useGLTF.preload(petUrl(p.model)));
 

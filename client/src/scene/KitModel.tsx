@@ -7,7 +7,8 @@ export const KIT_SCALE = 2;
 
 /** 'desk' → /models/furniture/desk.glb；'gym/treadmill' → /models/gym/treadmill.glb */
 export function kitUrl(name: string): string {
-  return name.includes('/') ? `/models/${name}.glb` : `/models/furniture/${name}.glb`;
+  const path = name.includes('/') ? `/models/${name}.glb` : `/models/furniture/${name}.glb`;
+  return `${path}?v=${__ASSET_VERSION__}`;
 }
 
 /** 以線性 RGB 比對 GLB 原始顏色，替換為指定 hex */

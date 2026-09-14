@@ -5,7 +5,8 @@ import { WEAPONS } from '@office/shared';
 
 /** 'burger' → /models/food/burger.glb；'gym/dumbbell' → /models/gym/dumbbell.glb */
 export function foodUrl(model: string): string {
-  return model.includes('/') ? `/models/${model}.glb` : `/models/food/${model}.glb`;
+  const path = model.includes('/') ? `/models/${model}.glb` : `/models/food/${model}.glb`;
+  return `${path}?v=${__ASSET_VERSION__}`;
 }
 
 /** 預先載入所有武器與投射物模型 */

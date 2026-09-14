@@ -8,6 +8,8 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
     __BUILD_TIME__: JSON.stringify(buildTime),
+    // 模型與字型檔名不帶 hash，URL 附上版本號才不會被瀏覽器快取住舊檔
+    __ASSET_VERSION__: JSON.stringify(Date.now().toString(36)),
   },
   server: {
     host: true,

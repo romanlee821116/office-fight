@@ -75,7 +75,7 @@ const ONE_SHOT: Record<string, number> = {
 const HOLD_LAST_FRAME = new Set<string>(['sit', 'die']);
 
 export function characterUrl(model: string): string {
-  return `/models/characters/${model}.glb`;
+  return `/models/characters/${model}.glb?v=${__ASSET_VERSION__}`;
 }
 
 interface AvatarProps {

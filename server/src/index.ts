@@ -57,8 +57,8 @@ app.use(
       if (filePath.includes(`${path.sep}assets${path.sep}`)) {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       } else if (filePath.includes(`${path.sep}models${path.sep}`) || filePath.includes(`${path.sep}fonts${path.sep}`)) {
-        // 模型 / 字型檔名不帶 hash，快取一天即可
-        res.setHeader('Cache-Control', 'public, max-age=86400');
+        // 模型 / 字型檔名不帶 hash，但前端 URL 會附版本號，改版即換 URL
+        res.setHeader('Cache-Control', 'public, max-age=604800');
       } else {
         res.setHeader('Cache-Control', 'no-cache');
       }

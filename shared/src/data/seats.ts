@@ -24,8 +24,9 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   if (f.type === 'treadmill') return [seatAt(f.id, '', f.x, f.z, rotY, 'run', '跑步')];
   if (f.type === 'bench') return [seatAt(f.id, '', f.x, f.z, rotY, 'benchpress', '臥推')];
   if (f.type === 'gymmat') return [seatAt(f.id, '', f.x, f.z, rotY, 'dance-squat', '波比跳')];
-  // Smith 訓練架：站到橫桿下深蹲（面向機器，起身點在身後開放區）
-  if (f.id === 'smith-machine') return [seatAt(f.id, '', f.x - 0.55, f.z - 0.1, 0, 'squat', '深蹲')];
+  // Smith 綜合架：躺上斜板臥推（座位在椅墊中心，rotY=π/2 讓頭朝世界 +X 的椅背端）
+  if (f.id === 'smith-machine') return [seatAt(f.id, '', f.x - 0.4, f.z, Math.PI / 2, 'benchpress-incline', '臥推')];
+  // 深蹲架：站到橫桿下深蹲
   if (f.id === 'squat-rack') return [seatAt(f.id, '', f.x, f.z - 0.15, Math.PI, 'squat', '深蹲')];
   return [];
 });
