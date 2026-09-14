@@ -142,8 +142,8 @@ const gym: FurnitureDef[] = [
   { id: 'barbell-0', type: 'prop', variant: 'barbell', x: 15.0, y: 1.05, z: 2.75, w: 2.2, d: 0.4, h: 0.4, color: '#2B2B2B', solid: false },
   { id: 'rack-0', type: 'rack', x: 15.0, z: 2.75, w: 2.0, d: 0.3, h: 1.1, color: '#4B5563' },
 
-  // 啞鈴架：靠右側，四個啞鈴由伺服端以可撿道具放在架上（見 weapons.ts DUMBBELL_RACK_SLOTS）
-  { id: 'dumbbell-rack', type: 'rack', x: 19.3, z: 4.6, w: 0.5, d: 2.2, h: 0.55, color: '#4B5563' },
+  // 啞鈴架：靠右牆（露台門在 z 3.6~6.4，別擋出入口），四個啞鈴由伺服端以可撿道具放在架上（見 weapons.ts DUMBBELL_RACK_SLOTS）
+  { id: 'dumbbell-rack', type: 'rack', x: 19.3, z: -2.4, w: 0.5, d: 2.2, h: 0.55, color: '#4B5563' },
   // 盆栽點綴
   { id: 'plant-gym-0', type: 'plant', x: 19.4, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
   { id: 'plant-gym-1', type: 'plant', x: 12.6, z: 7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },

@@ -113,7 +113,7 @@ export const WEAPON_BY_ID = new Map(WEAPONS.map((w) => [w.id, w]));
 export const SPAWNABLE_WEAPONS = WEAPONS.filter((w) => w.spawnable !== false);
 
 /** 啞鈴架上四個啞鈴的初始位置（配合 furniture.ts 的 dumbbell-rack） */
-export const DUMBBELL_RACK_SLOTS = [-0.8, -0.27, 0.27, 0.8].map((dz) => ({ x: 19.3, z: 4.6 + dz, y: 0.55 }));
+export const DUMBBELL_RACK_SLOTS = [-0.8, -0.27, 0.27, 0.8].map((dz) => ({ x: 19.3, z: -2.4 + dz, y: 0.55 }));
 
 export function getWeapon(id: string): WeaponDef | undefined {
   return WEAPON_BY_ID.get(id);
