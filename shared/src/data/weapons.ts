@@ -105,7 +105,7 @@ WEAPONS.push({
   knockback: 0,
   cooldownMs: 999999,
   scale: 1,
-  grip: { position: [-0.2, -1.0, 0.15], rotation: [-0.5, 0, 0], scale: 1 / 0.65 },
+  grip: { position: [-0.2, -1.0, 0.15], rotation: [0.3, 0, 0], scale: 1 / 0.65 },
   spawnable: false,
 });
 

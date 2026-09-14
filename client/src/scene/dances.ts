@@ -1,9 +1,42 @@
 import type { AnimState, DanceId } from '@office/shared';
 
 /** 由程式計算姿勢的動作（舞步 + 器材動作） */
-export type ProceduralAnim = DanceId | 'benchpress' | 'curl';
+export type ProceduralAnim = DanceId | 'benchpress' | 'curl' | 'swing';
 export function isProcedural(anim: AnimState): anim is ProceduralAnim {
-  return anim === 'benchpress' || anim === 'curl' || anim.startsWith('dance-');
+  return anim === 'benchpress' || anim === 'curl' || anim === 'swing' || anim.startsWith('dance-');
+}
+
+/** 一次性的程式動作（以觸發時間為 0 起算，而非牆上時鐘節拍） */
+export const ONE_SHOT_PROCEDURAL: Partial<Record<ProceduralAnim, number>> = { swing: 420 };
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function easeOut(t: number): number {
+  return 1 - (1 - t) * (1 - t);
+}
+
+/**
+ * 網球式正手揮拍（t 0~1）：引拍轉身 → 快速橫掃 → 收拍回正。
+ * 右手臂抬平讓球拍沿手臂方向水平掃過，主要旋轉在軀幹。
+ */
+export function swingPose(t: number): DancePose {
+  const wind = easeOut(clamp01(t / 0.3)); // 引拍
+  const strike = easeOut(clamp01((t - 0.3) / 0.25)); // 揮擊
+  const settle = easeOut(clamp01((t - 0.62) / 0.38)); // 收拍
+  const torsoYaw = 0.95 * wind - 2.1 * strike + 1.15 * settle;
+  const armLift = -1.5 * wind + 1.5 * settle * 0.9; // 抬平再放下
+  return {
+    rootY: -0.06 * strike * (1 - settle),
+    rootRotY: torsoYaw * 0.35,
+    torso: [0.08 * strike, torsoYaw, 0],
+    head: [0, -torsoYaw * 0.5, 0],
+    armR: [armLift, 0, -0.25 * wind - 0.15 * strike],
+    armL: [-0.4 * wind * (1 - settle), 0, 0.5 * strike * (1 - settle)],
+    legL: 0.18 * wind * (1 - settle),
+    legR: -0.22 * strike * (1 - settle),
+  };
 }
 /** 各程式動作的節拍 */
 export const PROCEDURAL_BPM: Record<string, number> = { benchpress: 60, curl: 80 };

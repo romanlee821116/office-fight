@@ -38,7 +38,7 @@ import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
 import { FireFX } from './FireFX';
 import { NameTag } from './NameTag';
-import { canAttack, local, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote } from './runtime';
+import { canAttack, local, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote, triggerSwing } from './runtime';
 import { useKeyboard } from './useKeyboard';
 
 /** 每隔幾幀掃描一次附近座位 */
@@ -147,10 +147,7 @@ export function LocalPlayer() {
         if (inCourtMatch(useGame.getState().me?.sessionId)) {
           if (local.dead) return;
           sendSwing({ aimX: Math.sin(local.rotY), aimZ: Math.cos(local.rotY) });
-          local.attackAnim = 'attack';
-          local.attackUntil = performance.now() + 420;
-          local.emote = null;
-          local.dance = null;
+          triggerSwing();
           return;
         }
         // 抱著寵物：空白鍵把牠丟出去

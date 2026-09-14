@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import { LoopOnce, LoopRepeat, Mesh, MeshBasicMaterial, MeshStandardMaterial, type Group, type Material, type Object3D } from 'three';
 import { AVATARS, DANCES, type AnimState, type AvatarDef } from '@office/shared';
 import { AvatarPrimitive } from './AvatarPrimitive';
-import { PROCEDURAL_BPM, dancePose, isProcedural } from './dances';
+import { ONE_SHOT_PROCEDURAL, PROCEDURAL_BPM, dancePose, isProcedural, swingPose, type DancePose } from './dances';
 import { HeldWeapon } from './HeldWeapon';
 
 /** Kenney Blocky Characters 高 2.7 單位，縮放後約 1.75m */
@@ -22,6 +22,7 @@ const CLIP_BY_ANIM: Partial<Record<AnimState, string>> = {
   'emote-no': 'emote-no',
   wave: 'interact-right',
   attack: 'attack-melee-right',
+  swing: 'idle', // 實際由程式動作接管
   throw: 'holding-right-shoot',
   hit: 'pick-up',
   dead: 'die',
@@ -176,11 +177,28 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: Av
   }, [actions, mixer]);
 
   const carryWeight = useRef(0);
+  /** 一次性程式動作（揮拍）的起始時間 */
+  const oneShotStart = useRef(0);
+  const oneShotAnim = useRef<string | null>(null);
+
+  const applyPose = (pose: DancePose) => {
+    const nodes = danceNodes.current;
+    if (!nodes) return;
+    nodes.root.position.set(0, pose.rootY, pose.rootZ ?? 0);
+    nodes.root.rotation.set(pose.rootRotX ?? 0, pose.rootRotY, 0);
+    nodes.torso.rotation.set(...pose.torso);
+    nodes.head.rotation.set(...pose.head);
+    nodes.armL.rotation.set(...pose.armL);
+    nodes.armR.rotation.set(...pose.armR);
+    nodes.legL.rotation.set(pose.legL, 0, 0);
+    nodes.legR.rotation.set(pose.legR, 0, 0);
+  };
 
   useFrame((_state, dt) => {
     const anim = animRef.current;
 
-    // 跳舞 / 器材動作：暫停動畫混合器，直接由程式設定節點角度；所有客戶端用牆上時鐘算節拍以對拍
+    // 跳舞 / 器材動作 / 揮拍：暫停動畫混合器，直接由程式設定節點角度。
+    // 循環動作用牆上時鐘算節拍讓所有人對拍；一次性動作（揮拍）以進入時間起算
     if (isProcedural(anim)) {
       const nodes = danceNodes.current;
       if (!nodes) return;
@@ -190,18 +208,23 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: Av
         requested.current = anim;
         dancing.current = true;
       }
+      const oneShotMs = ONE_SHOT_PROCEDURAL[anim];
+      if (oneShotMs) {
+        const now = performance.now();
+        if (oneShotAnim.current !== anim) {
+          oneShotAnim.current = anim;
+          oneShotStart.current = now;
+        }
+        const t = Math.min(1, (now - oneShotStart.current) / oneShotMs);
+        applyPose(swingPose(t));
+        return;
+      }
+      oneShotAnim.current = null;
       const beat = (Date.now() / 1000) * ((DANCE_BPM.get(anim) ?? 120) / 60);
-      const pose = dancePose(anim, beat);
-      nodes.root.position.set(0, pose.rootY, pose.rootZ ?? 0);
-      nodes.root.rotation.set(pose.rootRotX ?? 0, pose.rootRotY, 0);
-      nodes.torso.rotation.set(...pose.torso);
-      nodes.head.rotation.set(...pose.head);
-      nodes.armL.rotation.set(...pose.armL);
-      nodes.armR.rotation.set(...pose.armR);
-      nodes.legL.rotation.set(pose.legL, 0, 0);
-      nodes.legR.rotation.set(pose.legR, 0, 0);
+      applyPose(dancePose(anim, beat));
       return;
     }
+    oneShotAnim.current = null;
     if (dancing.current) {
       dancing.current = false;
       if (danceNodes.current) resetDanceNodes(danceNodes.current);

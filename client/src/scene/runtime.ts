@@ -93,6 +93,16 @@ export function canAttack(now: number): boolean {
   return true;
 }
 
+/** 揮拍動作（本地立即播放，狀態經 anim 欄位同步給其他人） */
+export function triggerSwing(): void {
+  if (local.dead || local.seatId) return;
+  local.attackAnim = 'swing';
+  local.attackUntil = performance.now() + 420;
+  local.emote = null;
+  local.dance = null;
+  local.exercise = null;
+}
+
 /** 投射物視覺請求（Projectiles 每幀消化） */
 export const projectileQueue: ProjectileEvent[] = [];
 

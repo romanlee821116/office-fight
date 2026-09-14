@@ -26,7 +26,17 @@ import {
 } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { beep, flashTitle, nativeNotify, stopFlashTitle } from '../lib/notify';
-import { applyKnockback, bloodQueue, courtBall, local, petTargets, projectileQueue, remoteTargets, resetRuntime } from '../scene/runtime';
+import {
+  applyKnockback,
+  bloodQueue,
+  courtBall,
+  local,
+  petTargets,
+  projectileQueue,
+  remoteTargets,
+  resetRuntime,
+  triggerSwing,
+} from '../scene/runtime';
 
 interface OfficeStateShape {
   players: Map<string, PlayerState>;
@@ -262,6 +272,8 @@ function bindRoom(r: Room<OfficeStateShape>): void {
 
   r.onMessage<CourtShotEvent>(Messages.courtShot, (ev) => {
     courtBall.flight = { fromX: ev.fromX, fromZ: ev.fromZ, toX: ev.toX, toZ: ev.toZ, arcH: ev.arcH, startAt: performance.now(), durationMs: ev.flightMs };
+    // 自動發球時發球者沒按空白鍵，補上揮拍動作
+    if (ev.byId === r.sessionId) triggerSwing();
   });
 
   // 天氣
