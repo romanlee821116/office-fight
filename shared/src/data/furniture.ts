@@ -149,6 +149,21 @@ const gym: FurnitureDef[] = [
   { id: 'plant-gym-1', type: 'plant', x: 12.6, z: 7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
 ];
 
+/** 戶外露台（匹克球場）：與健身房之間的玻璃隔間（缺口 z 3.6~6.4 為出入口）、球網碰撞、觀眾椅 */
+const terrace: FurnitureDef[] = [
+  { id: 'terrace-wall-0', type: 'partition', x: 20, z: -2.2, w: 0.16, d: 11.6, h: 1.6, color: '#BFD7EA' },
+  { id: 'terrace-wall-1', type: 'partition', x: 20, z: 7.2, w: 0.16, d: 1.6, h: 1.6, color: '#BFD7EA' },
+  // 球網：碰撞實體，外觀由 PickleCourt 繪製
+  { id: 'pickle-net', type: 'prop', variant: 'pickle-net', x: 29, z: 0, w: 0.14, d: 6.7, h: 0.92 },
+  // 觀眾椅（可坐，面向球場）
+  { id: 'court-chair-0', type: 'chair', variant: 'meeting-chair', x: 27, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
+  { id: 'court-chair-1', type: 'chair', variant: 'meeting-chair', x: 29, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
+  { id: 'court-chair-2', type: 'chair', variant: 'meeting-chair', x: 31, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
+  { id: 'plant-terrace-0', type: 'plant', x: 20.8, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
+  { id: 'plant-terrace-1', type: 'plant', x: 37.3, z: 7.3, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
+];
+FURNITURE.push(...terrace);
+
 FURNITURE.push(...gym);
 
 export const SOLID_FURNITURE = FURNITURE.filter((f) => f.solid !== false);

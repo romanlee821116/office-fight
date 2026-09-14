@@ -8,6 +8,7 @@ import {
   PET,
   PETS,
   PET_EAT_MS,
+  COURT,
   STOVE,
   WEATHER,
   getPet,
@@ -36,6 +37,8 @@ import {
   seatDistance,
   standPointForSeat,
   type ChatMessage,
+  type CourtShotEvent,
+  type CourtSide,
   type DuelAction,
   type DuelEvent,
   type HitEvent,
@@ -47,6 +50,7 @@ import {
   type ProjectileEvent,
   type RespawnEvent,
   type SitPayload,
+  type SwingPayload,
   type SystemMessage,
   type WeaponDef,
 } from '@office/shared';
@@ -140,6 +144,13 @@ export class OfficeRoom extends Room<OfficeState> {
   private petSeq = 0;
   private petAi = new Map<string, PetAi>();
   private stoveBurnTimer: { clear(): void } | null = null;
+  /** 匹克球：進行中那一拍的資訊（落地判定用） */
+  private courtShot: { shotId: number; toSide: CourtSide; toX: number; toZ: number; landAt: number; timer: { clear(): void } } | null = null;
+  private courtTimer: { clear(): void } | null = null;
+  private courtShotSeq = 0;
+  private lastSwingAt = new Map<string, number>();
+  /** 下一分由誰發球 */
+  private courtServeSide: CourtSide = 'A';
   private stoveGoneTimer: { clear(): void } | null = null;
   private stovePlacedBy = '';
 
@@ -175,6 +186,9 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<{ petId: string }>(Messages.feedPet, (client, payload) => this.handleFeedPet(client, payload));
     this.onPlayerMessage(Messages.stovePlace, (client) => this.handleStovePlace(client));
     this.onPlayerMessage(Messages.stoveTake, (client) => this.handleStoveTake(client));
+    this.onPlayerMessage<{ side: CourtSide }>(Messages.courtJoin, (client, payload) => this.handleCourtJoin(client, payload));
+    this.onPlayerMessage(Messages.courtLeave, (client) => this.handleCourtLeave(client));
+    this.onPlayerMessage<SwingPayload>(Messages.swing, (client, payload) => this.handleSwing(client, payload));
     // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
     this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
@@ -320,6 +334,7 @@ export class OfficeRoom extends Room<OfficeState> {
     }
     this.dropWeapon(player);
     this.dropCarriedPet(player.id);
+    this.leaveCourtIfPlaying(player.id, true);
     this.state.players.delete(client.sessionId);
     this.meta.delete(client.sessionId);
     this.broadcastSystem(`${name} 離開了辦公室`);
@@ -363,7 +378,7 @@ export class OfficeRoom extends Room<OfficeState> {
   private handleSit(client: Client, payload: SitPayload): void {
     const player = this.state.players.get(client.sessionId);
     const meta = this.meta.get(client.sessionId);
-    if (!player || !meta || player.seatId || player.hp <= 0 || player.duelWith) return;
+    if (!player || !meta || player.seatId || player.hp <= 0 || player.duelWith || this.courtSideOf(player.id)) return;
 
     const seat = SEAT_BY_ID.get(payload?.seatId ?? '');
     if (!seat) return;
@@ -408,6 +423,8 @@ export class OfficeRoom extends Room<OfficeState> {
   private canTarget(attacker: Player, other: Player): boolean {
     if (other === attacker || !other.fightMode || other.hp <= 0) return false;
     if (attacker.duelWith ? other.id !== attacker.duelWith : other.duelWith !== '') return false;
+    // 匹克球比賽中的雙方不參與格鬥
+    if (this.courtSideOf(attacker.id) || this.courtSideOf(other.id)) return false;
     return true;
   }
 
@@ -417,6 +434,7 @@ export class OfficeRoom extends Room<OfficeState> {
     const meta = this.meta.get(client.sessionId);
     if (!attacker || !meta || !attacker.fightMode || attacker.hp <= 0 || attacker.seatId) return;
 
+    if (this.courtSideOf(attacker.id)) return; // 比賽中空白鍵是揮拍
     const weapon = WEAPON_BY_ID.get(attacker.weaponId) ?? FIST;
     const now = Date.now();
     if (now - meta.lastAttackAt < weapon.cooldownMs) return;
@@ -658,6 +676,11 @@ export class OfficeRoom extends Room<OfficeState> {
   /** 把手上的武器放到腳邊（蛋糕若已用過幾發仍可撿，彈藥重算） */
   private dropWeapon(player: Player): void {
     if (!player.weaponId) return;
+    if (player.weaponId === 'paddle') {
+      player.weaponId = '';
+      player.ammo = 0;
+      return;
+    }
     this.addPickup(player.weaponId, player.x + 0.4, player.z + 0.4);
     player.weaponId = '';
     player.ammo = 0;
@@ -670,6 +693,7 @@ export class OfficeRoom extends Room<OfficeState> {
     if (action.action === 'invite') {
       const target = this.state.players.get(action.targetId);
       if (!target || target === me || me.duelWith || me.hp <= 0) return;
+      if (this.courtSideOf(me.id) || this.courtSideOf(target.id)) return; // 比賽中不打擾
       if (target.duelWith || target.hp <= 0 || this.invites.has(target.id) || this.hasOutgoingInvite(me.id)) {
         this.sendDuel(client, { kind: 'declined', byId: target.id, byName: target.name, reason: 'busy' });
         return;
@@ -915,7 +939,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
   private handlePetPickup(client: Client, payload: { petId: string }): void {
     const player = this.state.players.get(client.sessionId);
-    if (!player || player.hp <= 0 || player.seatId || player.duelWith) return;
+    if (!player || player.hp <= 0 || player.seatId || player.duelWith || this.courtSideOf(player.id)) return;
     if (this.carriedPetOf(player.id)) return;
     const pet = this.state.pets.get(payload?.petId ?? '');
     if (!pet || pet.carrierId || pet.anim === 'dead' || pet.anim === 'thrown') return;
@@ -1095,6 +1119,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.anim = 'dead';
     this.dropWeapon(player);
     this.dropCarriedPet(player.id);
+    this.leaveCourtIfPlaying(player.id, true);
     if (player.duelWith) {
       const opponent = this.state.players.get(player.duelWith);
       if (opponent) this.endDuel(opponent, player, 'ko');
@@ -1248,6 +1273,202 @@ export class OfficeRoom extends Room<OfficeState> {
     } catch (err) {
       logger.warn('天氣更新失敗，沿用上一次資料', err instanceof Error ? err.message : err);
     }
+  }
+
+  // ---------- 匹克球 ----------
+
+  private courtSideOf(sessionId: string): CourtSide | null {
+    if (this.state.courtPlayerA === sessionId) return 'A';
+    if (this.state.courtPlayerB === sessionId) return 'B';
+    return null;
+  }
+
+  private courtPlayerOf(side: CourtSide): Player | null {
+    const id = side === 'A' ? this.state.courtPlayerA : this.state.courtPlayerB;
+    return id ? (this.state.players.get(id) ?? null) : null;
+  }
+
+  private clearCourtTimers(): void {
+    this.courtTimer?.clear();
+    this.courtTimer = null;
+    this.courtShot?.timer.clear();
+    this.courtShot = null;
+  }
+
+  private handleCourtJoin(client: Client, payload: { side: CourtSide }): void {
+    const player = this.state.players.get(client.sessionId);
+    const side = payload?.side;
+    if (!player || (side !== 'A' && side !== 'B')) return;
+    if (player.hp <= 0 || player.seatId || player.duelWith || this.courtSideOf(player.id)) return;
+    const st = this.state;
+    if (st.courtStatus === 'over') return; // 結算畫面中，等清場
+    if ((side === 'A' && st.courtPlayerA) || (side === 'B' && st.courtPlayerB)) return; // 該側已有人
+    const slot = side === 'A' ? COURT.slotA : COURT.slotB;
+    if (Math.hypot(player.x - slot.x, player.z - slot.z) > COURT.joinRange + 0.6) return;
+
+    this.dropCarriedPet(player.id);
+    this.dropWeapon(player);
+    player.weaponId = 'paddle';
+    player.ammo = 0;
+    if (side === 'A') st.courtPlayerA = player.id;
+    else st.courtPlayerB = player.id;
+
+    if (st.courtPlayerA && st.courtPlayerB) {
+      st.courtScoreA = 0;
+      st.courtScoreB = 0;
+      this.courtServeSide = 'A';
+      this.startCourtCountdown();
+      this.broadcastSystem(`🏓 匹克球開打：${this.courtPlayerOf('A')?.name} vs ${this.courtPlayerOf('B')?.name}，先拿 ${COURT.winScore} 分獲勝`);
+    } else {
+      st.courtStatus = 'waiting';
+      this.broadcastSystem(`🏓 ${player.name} 在匹克球場等待對手（到另一側報名點按 E 加入）`);
+    }
+  }
+
+  private handleCourtLeave(client: Client): void {
+    this.leaveCourtIfPlaying(client.sessionId, false);
+  }
+
+  /** 退出比賽：比賽進行中退出視為棄權，對手獲勝 */
+  private leaveCourtIfPlaying(sessionId: string, silent: boolean): void {
+    const side = this.courtSideOf(sessionId);
+    if (!side) return;
+    const st = this.state;
+    const leaver = this.state.players.get(sessionId);
+    if (leaver?.weaponId === 'paddle') leaver.weaponId = '';
+
+    const opponentSide: CourtSide = side === 'A' ? 'B' : 'A';
+    const opponent = this.courtPlayerOf(opponentSide);
+    const inMatch = st.courtPlayerA && st.courtPlayerB && st.courtStatus !== 'over';
+
+    if (inMatch && opponent) {
+      if (!silent || true) {
+        this.broadcastSystem(`🏓 ${leaver?.name ?? '對手'}離開了比賽，${opponent.name} 不戰而勝`);
+      }
+      this.finishCourt(opponentSide, false);
+      return;
+    }
+    // 只有一個人在等，直接清空
+    if (side === 'A') st.courtPlayerA = '';
+    else st.courtPlayerB = '';
+    if (!st.courtPlayerA && !st.courtPlayerB) st.courtStatus = 'idle';
+  }
+
+  private startCourtCountdown(): void {
+    this.clearCourtTimers();
+    this.state.courtStatus = 'countdown';
+    this.courtTimer = this.clock.setTimeout(() => this.courtServe(), COURT.serveDelayMs);
+  }
+
+  /** 發球：從發球方目前位置（限制在自己半場）往對面丟 */
+  private courtServe(): void {
+    const server = this.courtPlayerOf(this.courtServeSide);
+    const receiver = this.courtPlayerOf(this.courtServeSide === 'A' ? 'B' : 'A');
+    if (!server || !receiver) return;
+    this.state.courtStatus = 'rally';
+    const fromX = clampNum(server.x, this.courtServeSide === 'A' ? COURT.minX : COURT.netX + 0.8, this.courtServeSide === 'A' ? COURT.netX - 0.8 : COURT.maxX);
+    const fromZ = clampNum(server.z, COURT.minZ, COURT.maxZ);
+    this.launchShot(server.id, this.courtServeSide === 'A' ? 'B' : 'A', fromX, fromZ, 0);
+  }
+
+  /** 打出一拍：目標落在 toSide 半場內，lateral 為壓角偏好（-1~1） */
+  private launchShot(byId: string, toSide: CourtSide, fromX: number, fromZ: number, lateral: number): void {
+    const deep = 0.6 + Math.random() * 0.35; // 0.6~0.95：偏後場
+    const half = COURT.netX;
+    const toX =
+      toSide === 'B'
+        ? half + (COURT.maxX - half - 0.5) * deep
+        : half - (half - COURT.minX - 0.5) * deep;
+    const toZ = clampNum(lateral * 2.3 + (Math.random() - 0.5) * 1.2, COURT.minZ + 0.35, COURT.maxZ - 0.35);
+    const dist = Math.hypot(toX - fromX, toZ - fromZ);
+    const flightMs = clampNum((dist / COURT.ballSpeed) * 1000, COURT.flightMinMs, COURT.flightMaxMs);
+    const arcH = 1.35 + dist * 0.055;
+    const shotId = ++this.courtShotSeq;
+
+    this.courtShot?.timer.clear();
+    this.courtShot = {
+      shotId,
+      toSide,
+      toX,
+      toZ,
+      landAt: Date.now() + flightMs,
+      timer: this.clock.setTimeout(() => this.courtBallLanded(shotId), flightMs),
+    };
+    const event: CourtShotEvent = { shotId, byId, fromX, fromZ, toX, toZ, flightMs, arcH };
+    this.broadcast(Messages.courtShot, event);
+  }
+
+  /** 球落地沒人接到：打這拍的一方得分 */
+  private courtBallLanded(shotId: number): void {
+    if (this.courtShot?.shotId !== shotId) return;
+    const toSide = this.courtShot.toSide;
+    this.courtShot = null;
+    const scorerSide: CourtSide = toSide === 'A' ? 'B' : 'A';
+    const scorer = this.courtPlayerOf(scorerSide);
+    const loser = this.courtPlayerOf(toSide);
+    if (!scorer || !loser) return;
+
+    if (scorerSide === 'A') this.state.courtScoreA += 1;
+    else this.state.courtScoreB += 1;
+    const a = this.state.courtScoreA;
+    const b = this.state.courtScoreB;
+
+    if (a >= COURT.winScore || b >= COURT.winScore) {
+      this.broadcastSystem(`🏓 ${scorer.name} 得分（${a}:${b}）`);
+      this.finishCourt(scorerSide, true);
+      return;
+    }
+    this.state.courtStatus = 'between';
+    this.broadcastSystem(`🏓 ${scorer.name} 得分（${a}:${b}）`);
+    this.courtServeSide = scorerSide; // 得分者發下一球
+    this.courtTimer?.clear();
+    this.courtTimer = this.clock.setTimeout(() => this.startCourtCountdown(), COURT.betweenPointsMs);
+  }
+
+  /** 結束比賽並在幾秒後清場 */
+  private finishCourt(winnerSide: CourtSide, announce: boolean): void {
+    this.clearCourtTimers();
+    const winner = this.courtPlayerOf(winnerSide);
+    if (announce && winner) {
+      this.broadcastSystem(`🏆 匹克球比賽結束，${winner.name} 獲勝（${this.state.courtScoreA}:${this.state.courtScoreB}）！`);
+    }
+    for (const side of ['A', 'B'] as const) {
+      const p = this.courtPlayerOf(side);
+      if (p?.weaponId === 'paddle') p.weaponId = '';
+    }
+    this.state.courtStatus = 'over';
+    this.courtTimer = this.clock.setTimeout(() => {
+      this.state.courtPlayerA = '';
+      this.state.courtPlayerB = '';
+      this.state.courtScoreA = 0;
+      this.state.courtScoreB = 0;
+      this.state.courtStatus = 'idle';
+    }, COURT.overResetMs);
+  }
+
+  /** 揮拍：球在自己半場、距離與時間窗內就回擊 */
+  private handleSwing(client: Client, payload: SwingPayload): void {
+    const side = this.courtSideOf(client.sessionId);
+    const player = this.state.players.get(client.sessionId);
+    if (!side || !player) return;
+    const now = Date.now();
+    const last = this.lastSwingAt.get(client.sessionId) ?? 0;
+    if (now - last < COURT.swingCooldownMs) return;
+    this.lastSwingAt.set(client.sessionId, now);
+
+    const shot = this.courtShot;
+    if (!shot || this.state.courtStatus !== 'rally') return;
+    if (shot.toSide !== side) return; // 球不是往你這邊飛
+    if (Math.abs(shot.landAt - now) > COURT.hitWindowMs) return; // 太早或太晚
+    if (Math.hypot(player.x - shot.toX, player.z - shot.toZ) > COURT.hitRange) return; // 人不到位
+
+    // 回擊成功：以落點為起點打回去，壓角由揮拍瞬間的面向決定
+    const lateral = clampNum((payload?.aimZ ?? 0) * 1.2, -1, 1);
+    const fromX = shot.toX;
+    const fromZ = shot.toZ;
+    shot.timer.clear();
+    this.courtShot = null;
+    this.launchShot(player.id, side === 'A' ? 'B' : 'A', fromX, fromZ, lateral);
   }
 
   private broadcastSystem(text: string): void {

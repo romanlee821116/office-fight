@@ -1,5 +1,6 @@
 import { DANCES, EMOTES, SEAT_BY_ID, getPet, getWeapon, type DanceId, type EmoteId } from '@office/shared';
 import {
+  sendCourtJoin,
   sendFeedPet,
   sendPetDrop,
   sendPetPickup,
@@ -28,6 +29,10 @@ export function InteractionBar() {
   const myWeapon = useGame((s) => (meId ? s.players[meId]?.weaponId : '') ?? '');
   const holdingFood = getWeapon(myWeapon)?.edible === true;
   const canStoveTake = nearStove && stove.stage === 'cooking' && !myWeapon;
+  const court = useGame((s) => s.court);
+  const nearCourtSlot = useGame((s) => s.nearCourtSlot);
+  const inMatch = Boolean(meId && (court.aId === meId || court.bId === meId));
+  const canCourtJoin = nearCourtSlot !== null && !inMatch;
   const stoveFoodName = stove.foodId ? getWeapon(stove.foodId)?.name : undefined;
 
   const onEmote = (id: EmoteId) => {
@@ -39,7 +44,7 @@ export function InteractionBar() {
 
   return (
     <div className="pointer-events-none flex flex-col items-center gap-2">
-      {(seated || nearSeatId || nearPickup || nearPet || carriedPet || canStoveTake) && (
+      {(seated || nearSeatId || nearPickup || nearPet || carriedPet || canStoveTake || canCourtJoin) && (
         <button
           type="button"
           onClick={() =>
@@ -47,9 +52,11 @@ export function InteractionBar() {
               ? sendStand()
               : carriedPet
                 ? sendPetDrop()
-                : nearPet
-                  ? sendPetPickup(nearPet.id)
-                  : canStoveTake
+                : canCourtJoin
+                  ? sendCourtJoin(nearCourtSlot!)
+                  : nearPet
+                    ? sendPetPickup(nearPet.id)
+                    : canStoveTake
                     ? sendStoveTake()
                     : nearPickup
                       ? sendPickup(nearPickup.id)
@@ -62,9 +69,11 @@ export function InteractionBar() {
             ? '起身'
             : carriedPet
               ? `放下 ${getPet(carriedPet.petType).name}`
-              : nearPet
-                ? `抱起 ${getPet(nearPet.petType).name}`
-                : canStoveTake
+              : canCourtJoin
+                ? `報名匹克球（${nearCourtSlot} 側）`
+                : nearPet
+                  ? `抱起 ${getPet(nearPet.petType).name}`
+                  : canStoveTake
                   ? `拿回 ${stoveFoodName ?? '食物'}`
                   : nearPickup
                     ? `撿起 ${pickupName ?? '武器'}`

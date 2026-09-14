@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import {
   Color,
@@ -13,7 +13,7 @@ import {
   type HemisphereLight,
   type PointLight,
 } from 'three';
-import { ROOM_MAX_X, ROOM_MAX_Z, ROOM_MIN_X, ROOM_MIN_Z } from '@office/shared';
+import { INDOOR_MAX_X, ROOM_MAX_Z, ROOM_MIN_X, ROOM_MIN_Z } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { paletteAt } from '../lib/daynight';
 import { weatherInfo } from '../lib/weather';
@@ -41,8 +41,9 @@ function localHour(): number {
 // ---------- 雨雪粒子 ----------
 const POOL = 340;
 /** 粒子灑落範圍（以場景為中心，避開室內，落在島外與窗外才看得到雨） */
-const AREA = { minX: -30, maxX: 38, minZ: -22, maxZ: 24 };
-const INSIDE = { minX: ROOM_MIN_X - 1, maxX: ROOM_MAX_X + 1, minZ: ROOM_MIN_Z - 1, maxZ: ROOM_MAX_Z + 1 };
+const AREA = { minX: -30, maxX: 52, minZ: -22, maxZ: 24 };
+/** 雨雪只避開室內（辦公室＋健身房）；戶外露台與匹克球場會淋雨 */
+const INSIDE = { minX: ROOM_MIN_X - 1, maxX: INDOOR_MAX_X + 1, minZ: ROOM_MIN_Z - 1, maxZ: ROOM_MAX_Z + 1 };
 const TOP_Y = 15;
 
 interface Drop {
@@ -162,6 +163,17 @@ export function SceneEnvironment() {
   const flash = useRef(0);
   const nextThunder = useRef(0);
 
+  // 世界往右擴到 x=38（露台），把陰影相機的目標移到世界中心才照得到球場
+  useEffect(() => {
+    const d = dir.current;
+    if (!d) return;
+    d.target.position.set(13, 0, 0);
+    scene.add(d.target);
+    return () => {
+      scene.remove(d.target);
+    };
+  }, [scene]);
+
   useFrame((state, dt) => {
     const info = weatherInfo(effectiveWeatherCode());
     const pal = paletteAt(HOUR_OVERRIDE ?? localHour());
@@ -215,16 +227,16 @@ export function SceneEnvironment() {
       <hemisphereLight ref={hemi} args={['#FFFFFF', '#C9B7A0', 0.5]} />
       <directionalLight
         ref={dir}
-        position={[18, 22, 10]}
+        position={[31, 24, 10]}
         intensity={1.6}
         castShadow
         shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0002}
         shadow-normalBias={0.06}
-        shadow-camera-left={-24}
-        shadow-camera-right={24}
-        shadow-camera-top={22}
-        shadow-camera-bottom={-22}
+        shadow-camera-left={-28}
+        shadow-camera-right={28}
+        shadow-camera-top={24}
+        shadow-camera-bottom={-24}
         shadow-camera-near={1}
         shadow-camera-far={60}
       />

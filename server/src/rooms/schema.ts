@@ -47,6 +47,12 @@ export class OfficeState extends Schema {
   @type('string') stoveFoodId: string = '';
   /** '' | 'cooking' | 'burning' */
   @type('string') stoveStage: string = '';
+  /** 匹克球：idle | waiting | countdown | rally | between | over */
+  @type('string') courtStatus: string = 'idle';
+  @type('string') courtPlayerA: string = '';
+  @type('string') courtPlayerB: string = '';
+  @type('uint8') courtScoreA: number = 0;
+  @type('uint8') courtScoreB: number = 0;
   /** WMO 天氣代碼，-1 = 尚未取得 */
   @type('number') weatherCode: number = -1;
   @type('number') weatherTemp: number = 0;

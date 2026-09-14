@@ -261,6 +261,28 @@ export interface PetFlightEvent {
   durationMs: number;
 }
 
+/** 匹克球：報名側別 */
+export type CourtSide = 'A' | 'B';
+
+/** C→S：揮拍（aim 為揮拍瞬間的面向向量，用來決定回球往哪個角落） */
+export interface SwingPayload {
+  aimX: number;
+  aimZ: number;
+}
+
+/** S→C：一拍球的飛行（所有客戶端各自播同一條拋物線；落地判定在伺服端） */
+export interface CourtShotEvent {
+  shotId: number;
+  byId: string;
+  fromX: number;
+  fromZ: number;
+  toX: number;
+  toZ: number;
+  flightMs: number;
+  /** 拋物線最高點 */
+  arcH: number;
+}
+
 /** S→C：閒置提醒與自動離開 */
 export interface IdleEvent {
   kind: 'warn' | 'kick' | 'clear';
@@ -351,6 +373,10 @@ export const Messages = {
   stovePlace: 'stovePlace',
   stoveTake: 'stoveTake',
   feedPet: 'feedPet',
+  courtJoin: 'courtJoin',
+  courtLeave: 'courtLeave',
+  swing: 'swing',
+  courtShot: 'courtShot',
   chat: 'chat',
   system: 'system',
 } as const;

@@ -114,6 +114,10 @@ interface GameState {
   weather: { code: number; temp: number; isDay: boolean };
   /** 是否套用即時天氣效果（個人設定，存 localStorage，預設開） */
   weatherEnabled: boolean;
+  /** 匹克球比賽狀態（伺服端同步） */
+  court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number };
+  /** 本地玩家附近的報名點 */
+  nearCourtSlot: 'A' | 'B' | null;
   /** 地上的武器 */
   pickups: Record<string, PickupInfo>;
   /** 辦公室寵物 */
@@ -153,6 +157,8 @@ interface GameState {
   setStove: (stove: { foodId: string; stage: string }) => void;
   setWeather: (weather: { code: number; temp: number; isDay: boolean }) => void;
   setWeatherEnabled: (enabled: boolean) => void;
+  setCourt: (court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number }) => void;
+  setNearCourtSlot: (slot: 'A' | 'B' | null) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
   upsertPet: (pet: PetInfo) => void;
@@ -185,6 +191,8 @@ const initial = {
   stove: { foodId: '', stage: '' },
   weather: { code: -1, temp: 0, isDay: true },
   weatherEnabled: readWeatherEnabled(),
+  court: { status: 'idle', aId: '', bId: '', scoreA: 0, scoreB: 0 },
+  nearCourtSlot: null,
   pickups: {},
   pets: {},
   seated: false,
@@ -246,6 +254,8 @@ export const useGame = create<GameState>((set) => ({
   setNearStove: (nearStove) => set((s) => (s.nearStove === nearStove ? s : { nearStove })),
   setStove: (stove) => set({ stove }),
   setWeather: (weather) => set({ weather }),
+  setCourt: (court) => set({ court }),
+  setNearCourtSlot: (nearCourtSlot) => set((s) => (s.nearCourtSlot === nearCourtSlot ? s : { nearCourtSlot })),
   setWeatherEnabled: (weatherEnabled) => {
     try {
       localStorage.setItem(WEATHER_FX_KEY, weatherEnabled ? '1' : '0');

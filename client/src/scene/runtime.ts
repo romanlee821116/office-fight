@@ -96,6 +96,11 @@ export function canAttack(now: number): boolean {
 /** 投射物視覺請求（Projectiles 每幀消化） */
 export const projectileQueue: ProjectileEvent[] = [];
 
+/** 匹克球目前這一拍的飛行（CourtBall 每幀讀取） */
+export const courtBall = {
+  flight: null as { fromX: number; fromZ: number; toX: number; toZ: number; arcH: number; startAt: number; durationMs: number } | null,
+};
+
 /** 套用伺服端的擊退結果 */
 export function applyKnockback(toX: number, toZ: number, faceX: number, faceZ: number): void {
   const now = performance.now();
@@ -170,6 +175,7 @@ export function resetRuntime(): void {
   local.staggerUntil = 0;
   local.knockback = null;
   bloodQueue.length = 0;
+  courtBall.flight = null;
   rig.yaw = CAMERA.yawDefault;
   rig.pitch = CAMERA.pitchDefault;
   rig.distance = CAMERA.distanceDefault;

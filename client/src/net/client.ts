@@ -5,6 +5,8 @@ import {
   Messages,
   SEAT_BY_ID,
   type ChatMessage,
+  type CourtShotEvent,
+  type CourtSide,
   type DuelAction,
   type DuelEvent,
   type HitEvent,
@@ -19,11 +21,12 @@ import {
   type PlayerState,
   type RespawnEvent,
   type SitPayload,
+  type SwingPayload,
   type SystemMessage,
 } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { beep, flashTitle, nativeNotify, stopFlashTitle } from '../lib/notify';
-import { applyKnockback, bloodQueue, local, petTargets, projectileQueue, remoteTargets, resetRuntime } from '../scene/runtime';
+import { applyKnockback, bloodQueue, courtBall, local, petTargets, projectileQueue, remoteTargets, resetRuntime } from '../scene/runtime';
 
 interface OfficeStateShape {
   players: Map<string, PlayerState>;
@@ -31,6 +34,11 @@ interface OfficeStateShape {
   pets: Map<string, PetState>;
   stoveFoodId: string;
   stoveStage: string;
+  courtStatus: string;
+  courtPlayerA: string;
+  courtPlayerB: string;
+  courtScoreA: number;
+  courtScoreB: number;
   weatherCode: number;
   weatherTemp: number;
   weatherIsDay: boolean;
@@ -236,6 +244,25 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     useGame.getState().setStove({ foodId: r.state.stoveFoodId ?? '', stage: r.state.stoveStage ?? '' });
   $(r.state).listen('stoveFoodId', syncStove);
   $(r.state).listen('stoveStage', syncStove);
+
+  // 匹克球
+  const syncCourt = () =>
+    useGame.getState().setCourt({
+      status: r.state.courtStatus ?? 'idle',
+      aId: r.state.courtPlayerA ?? '',
+      bId: r.state.courtPlayerB ?? '',
+      scoreA: r.state.courtScoreA ?? 0,
+      scoreB: r.state.courtScoreB ?? 0,
+    });
+  $(r.state).listen('courtStatus', syncCourt);
+  $(r.state).listen('courtPlayerA', syncCourt);
+  $(r.state).listen('courtPlayerB', syncCourt);
+  $(r.state).listen('courtScoreA', syncCourt);
+  $(r.state).listen('courtScoreB', syncCourt);
+
+  r.onMessage<CourtShotEvent>(Messages.courtShot, (ev) => {
+    courtBall.flight = { fromX: ev.fromX, fromZ: ev.fromZ, toX: ev.toX, toZ: ev.toZ, arcH: ev.arcH, startAt: performance.now(), durationMs: ev.flightMs };
+  });
 
   // 天氣
   const syncWeather = () =>
@@ -473,6 +500,18 @@ export function sendPickup(pickupId: string): void {
 
 export function sendDrop(): void {
   room?.send(Messages.drop);
+}
+
+export function sendCourtJoin(side: CourtSide): void {
+  room?.send(Messages.courtJoin, { side });
+}
+
+export function sendCourtLeave(): void {
+  room?.send(Messages.courtLeave);
+}
+
+export function sendSwing(payload: SwingPayload): void {
+  room?.send(Messages.swing, payload);
 }
 
 export function sendFeedPet(petId: string): void {

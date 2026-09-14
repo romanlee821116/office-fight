@@ -94,6 +94,21 @@ WEAPONS.push({
   exercise: 'curl',
 });
 
+/** 匹克球拍：比賽中由伺服端配發（不會出現在地上、不能攻擊、不能吃） */
+WEAPONS.push({
+  id: 'paddle',
+  name: '球拍',
+  model: '',
+  kind: 'melee',
+  damage: 0,
+  range: 0,
+  knockback: 0,
+  cooldownMs: 999999,
+  scale: 1,
+  grip: { position: [-0.2, -1.0, 0.15], rotation: [-0.5, 0, 0], scale: 1 / 0.65 },
+  spawnable: false,
+});
+
 export const WEAPON_BY_ID = new Map(WEAPONS.map((w) => [w.id, w]));
 export const SPAWNABLE_WEAPONS = WEAPONS.filter((w) => w.spawnable !== false);
 

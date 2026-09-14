@@ -3,7 +3,7 @@
  * 右側再擴建 8m 作為健身房（x 12～20），因此 X 方向不對稱。
  */
 export const ROOM_MIN_X = -12;
-export const ROOM_MAX_X = 20;
+export const ROOM_MAX_X = 38;
 export const ROOM_MIN_Z = -8;
 export const ROOM_MAX_Z = 8;
 export const ROOM_WIDTH = ROOM_MAX_X - ROOM_MIN_X;
@@ -15,6 +15,11 @@ export const HALF_D = ROOM_DEPTH / 2;
 export const WALL_HEIGHT = 3;
 /** 健身房分隔牆所在的 X */
 export const GYM_WALL_X = 12;
+/** 室內（辦公室＋健身房）與戶外露台的分界 X */
+export const TERRACE_WALL_X = 20;
+/** 室內範圍（後牆、地板材質與雨雪排除用） */
+export const INDOOR_MIN_X = ROOM_MIN_X;
+export const INDOOR_MAX_X = TERRACE_WALL_X;
 
 /** 玩家 */
 export const PLAYER_RADIUS = 0.35;
@@ -90,8 +95,8 @@ export const PET = {
   respawnMs: 8000,
   /** 寵物比較輕，擊退距離倍率 */
   knockbackFactor: 1.4,
-  /** 活動範圍（含健身房） */
-  area: { minX: -11, maxX: 19, minZ: -7, maxZ: 7 },
+  /** 活動範圍（含健身房與戶外露台） */
+  area: { minX: -11, maxX: 36, minZ: -7, maxZ: 7 },
   /** 名牌高度 */
   tagHeight: 1.15,
   /** 最多餵幾次；餵滿時體型為兩倍 */
@@ -142,6 +147,38 @@ export const WEATHER = {
   /** 預設座標：台北（可用 WEATHER_LAT / WEATHER_LON 環境變數覆寫） */
   defaultLat: 25.04,
   defaultLon: 121.56,
+};
+
+/**
+ * 匹克球場（戶外露台 x 20~38）。
+ * 場地 13.4 x 6.1m，網在 x=COURT.netX；每球得分制，先到 winScore 獲勝。
+ */
+export const COURT = {
+  minX: 22.3,
+  maxX: 35.7,
+  minZ: -3.05,
+  maxZ: 3.05,
+  netX: 29,
+  netHeight: 0.86,
+  /** 兩側報名點（站上去按 E 加入） */
+  slotA: { x: 21.6, z: 4.3 },
+  slotB: { x: 36.4, z: 4.3 },
+  joinRange: 1.4,
+  winScore: 7,
+  /** 回擊判定：與球的水平距離、落地前後的時間窗 */
+  hitRange: 1.7,
+  hitWindowMs: 420,
+  /** 揮拍冷卻（防連點） */
+  swingCooldownMs: 350,
+  /** 發球倒數與每分之間的間隔 */
+  serveDelayMs: 2500,
+  betweenPointsMs: 1800,
+  /** 球的水平速度與飛行時間範圍 */
+  ballSpeed: 8.5,
+  flightMinMs: 650,
+  flightMaxMs: 1500,
+  /** 結束畫面停留時間，之後清場 */
+  overResetMs: 6000,
 };
 
 /** 決鬥 */

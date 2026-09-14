@@ -2,6 +2,7 @@ import { cancelReconnect, disconnect } from '../net/client';
 import { phaseLabel, weatherInfo } from '../lib/weather';
 import { useGame } from '../store/useGame';
 import { ChatPanel } from './ChatPanel';
+import { CourtBanner } from './CourtBanner';
 import { DuelOverlay } from './DuelOverlay';
 import { IdleWarning } from './IdleWarning';
 import { FightPanel } from './FightPanel';
@@ -64,6 +65,7 @@ export function Hud() {
       </div>
 
       <div className="mx-auto mt-3 flex flex-col items-center gap-2">
+        <CourtBanner />
         <IdleWarning />
         <DuelOverlay />
       </div>

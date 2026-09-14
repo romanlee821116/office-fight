@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Group } from 'three';
 import {
+  COURT,
   DANCES,
   EMOTES,
   PET,
@@ -19,6 +20,7 @@ import {
 } from '@office/shared';
 import {
   sendAttack,
+  sendCourtJoin,
   sendDrop,
   sendFeedPet,
   sendMove,
@@ -30,6 +32,7 @@ import {
   sendStand,
   sendStovePlace,
   sendStoveTake,
+  sendSwing,
 } from '../net/client';
 import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
@@ -50,6 +53,13 @@ function lerpAngle(a: number, b: number, t: number): number {
 
 function isTyping(target: EventTarget | null): boolean {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+}
+
+/** 我是否在匹克球比賽中 */
+function inCourtMatch(meId: string | undefined): boolean {
+  if (!meId) return false;
+  const c = useGame.getState().court;
+  return c.aId === meId || c.bId === meId;
 }
 
 /** 我抱著的寵物 id */
@@ -133,6 +143,16 @@ export function LocalPlayer() {
       if (isTyping(e.target) || e.repeat) return;
       if (e.code === 'Space') {
         e.preventDefault();
+        // 匹克球比賽中：空白鍵是揮拍
+        if (inCourtMatch(useGame.getState().me?.sessionId)) {
+          if (local.dead) return;
+          sendSwing({ aimX: Math.sin(local.rotY), aimZ: Math.cos(local.rotY) });
+          local.attackAnim = 'attack';
+          local.attackUntil = performance.now() + 420;
+          local.emote = null;
+          local.dance = null;
+          return;
+        }
         // 抱著寵物：空白鍵把牠丟出去
         if (carriedPetId(useGame.getState().me?.sessionId)) {
           if (!local.dead && !local.seatId) sendPetThrow();
@@ -175,6 +195,8 @@ export function LocalPlayer() {
           standPending.current = true;
         } else if (carriedPetId(state.me?.sessionId)) {
           sendPetDrop(); // 抱著寵物時 E 是輕輕放下
+        } else if (state.nearCourtSlot && !inCourtMatch(state.me?.sessionId)) {
+          sendCourtJoin(state.nearCourtSlot);
         } else if (nearPetId) {
           sendPetPickup(nearPetId);
         } else if (state.nearStove && state.stove.stage === 'cooking' && !local.weaponId) {
@@ -310,6 +332,11 @@ export function LocalPlayer() {
       useGame.getState().setNearPickup(nearestPickup(local.x, local.z));
       useGame.getState().setNearPet(nearestPet(local.x, local.z));
       useGame.getState().setNearStove(Math.hypot(local.x - STOVE.x, local.z - STOVE.z) <= STOVE.range);
+      const court = useGame.getState().court;
+      const nearA = Math.hypot(local.x - COURT.slotA.x, local.z - COURT.slotA.z) <= COURT.joinRange;
+      const nearB = Math.hypot(local.x - COURT.slotB.x, local.z - COURT.slotB.z) <= COURT.joinRange;
+      const slot = nearA && !court.aId ? 'A' : nearB && !court.bId ? 'B' : null;
+      useGame.getState().setNearCourtSlot(court.status === 'over' ? null : slot);
     }
 
     // 20Hz 上傳；靜止且無變化時不重複送
