@@ -24,6 +24,9 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   if (f.type === 'treadmill') return [seatAt(f.id, '', f.x, f.z, rotY, 'run', '跑步')];
   if (f.type === 'bench') return [seatAt(f.id, '', f.x, f.z, rotY, 'benchpress', '臥推')];
   if (f.type === 'gymmat') return [seatAt(f.id, '', f.x, f.z, rotY, 'dance-squat', '波比跳')];
+  // Smith 訓練架：站到橫桿下深蹲（面向機器，起身點在身後開放區）
+  if (f.id === 'smith-machine') return [seatAt(f.id, '', f.x - 0.55, f.z - 0.1, 0, 'squat', '深蹲')];
+  if (f.id === 'squat-rack') return [seatAt(f.id, '', f.x, f.z - 0.15, Math.PI, 'squat', '深蹲')];
   return [];
 });
 
@@ -48,7 +51,41 @@ export function findNearestSeat(x: number, z: number, occupied: ReadonlySet<stri
   return best;
 }
 
-/** 起身後的站立點：座位後方，並推出碰撞盒 */
+/**
+ * 起身後的站立點：優先站到座位後方；若該處落在家具或牆內（例如貼牆的深蹲架），
+ * 依序改試前方與左右、再加大距離，取第一個不會被推開的點。
+ */
+/** 該點四周 0.2m 內都不會被推開（避免起身後卡在碰撞盒邊緣） */
+function isClear(x: number, z: number): boolean {
+  for (const [dx, dz] of [
+    [0.2, 0],
+    [-0.2, 0],
+    [0, 0.2],
+    [0, -0.2],
+  ]) {
+    const p = resolvePosition(x + dx, z + dz);
+    if (Math.hypot(p.x - (x + dx), p.z - (z + dz)) > 1e-6) return false;
+  }
+  return true;
+}
+
 export function standPointForSeat(seat: Seat): Vec2 {
-  return resolvePosition(seat.x - Math.sin(seat.rotY) * SEAT_STAND_OFFSET, seat.z - Math.cos(seat.rotY) * SEAT_STAND_OFFSET);
+  const fx = Math.sin(seat.rotY);
+  const fz = Math.cos(seat.rotY);
+  const dirs: Vec2[] = [
+    { x: -fx, z: -fz },
+    { x: fx, z: fz },
+    { x: -fz, z: fx },
+    { x: fz, z: -fx },
+  ];
+  // 方向優先：先把後方各距離試完，再換前方與左右，讓起身點盡量留在座位正後方
+  for (const d of dirs) {
+    for (const dist of [SEAT_STAND_OFFSET, SEAT_STAND_OFFSET * 2, SEAT_STAND_OFFSET * 3]) {
+      const raw = { x: seat.x + d.x * dist, z: seat.z + d.z * dist };
+      const p = resolvePosition(raw.x, raw.z);
+      // 留一點餘裕，避免剛好貼在碰撞盒邊界上
+      if (Math.hypot(p.x - raw.x, p.z - raw.z) < 1e-6 && isClear(p.x, p.z)) return p;
+    }
+  }
+  return resolvePosition(seat.x, seat.z);
 }

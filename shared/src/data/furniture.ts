@@ -1,4 +1,4 @@
-import { GYM_WALL_X, ROOM_MAX_X, ROOM_MAX_Z, ROOM_MIN_Z } from '../constants';
+import { GYM_WALL_X, ROOM_MAX_Z, ROOM_MIN_Z, TERRACE_WALL_X } from '../constants';
 import type { FurnitureDef } from '../types';
 
 /**
@@ -98,7 +98,7 @@ export const FURNITURE: FurnitureDef[] = [
 ];
 
 /** 健身房：玻璃隔間 + 器材。分隔牆在 x=12，入口為 z 3.6～6.4 的缺口 */
-const GYM_CENTER_X = (GYM_WALL_X + ROOM_MAX_X) / 2; // 16
+const GYM_CENTER_X = (GYM_WALL_X + TERRACE_WALL_X) / 2; // 17.5
 const DOOR_MIN_Z = 3.6;
 const DOOR_MAX_Z = 6.4;
 const gym: FurnitureDef[] = [
@@ -123,18 +123,18 @@ const gym: FurnitureDef[] = [
     h: 1.6,
     color: '#BFD7EA',
   },
-  // 橡膠地墊（整區）
-  { id: 'gym-floor', type: 'gymfloor', x: GYM_CENTER_X, z: 0, w: ROOM_MAX_X - GYM_WALL_X - 0.3, d: 15.6, h: 0.02, color: '#6B7280', solid: false },
+  // 橡膠地墊（健身房整區，到露台分界為止）
+  { id: 'gym-floor', type: 'gymfloor', x: GYM_CENTER_X, z: 0, w: TERRACE_WALL_X - GYM_WALL_X - 0.3, d: 15.6, h: 0.02, color: '#6B7280', solid: false },
 
   // 跑步機 ×3：靠後牆，跑者面向 -Z（牆上有鏡子）
-  { id: 'treadmill-0', type: 'treadmill', x: 13.8, z: -6.2, w: 0.9, d: 1.7, h: 1.2, color: '#374151', rotY: Math.PI },
-  { id: 'treadmill-1', type: 'treadmill', x: 16.0, z: -6.2, w: 0.9, d: 1.7, h: 1.2, color: '#374151', rotY: Math.PI },
-  { id: 'treadmill-2', type: 'treadmill', x: 18.2, z: -6.2, w: 0.9, d: 1.7, h: 1.2, color: '#374151', rotY: Math.PI },
+  { id: 'treadmill-0', type: 'treadmill', x: 14.2, z: -6.2, w: 0.9, d: 1.7, h: 1.2, color: '#374151', rotY: Math.PI },
+  { id: 'treadmill-1', type: 'treadmill', x: 16.8, z: -6.2, w: 0.9, d: 1.7, h: 1.2, color: '#374151', rotY: Math.PI },
+  { id: 'treadmill-2', type: 'treadmill', x: 19.4, z: -6.2, w: 0.9, d: 1.7, h: 1.2, color: '#374151', rotY: Math.PI },
 
-  // 瑜珈墊 ×3：中央，長邊沿 Z
-  { id: 'gymmat-0', type: 'gymmat', x: 13.8, z: -1.5, w: 0.9, d: 1.9, h: 0.04, color: '#6C8EBF', solid: false },
-  { id: 'gymmat-1', type: 'gymmat', x: 16.0, z: -1.5, w: 0.9, d: 1.9, h: 0.04, color: '#8FB58A', solid: false },
-  { id: 'gymmat-2', type: 'gymmat', x: 18.2, z: -1.5, w: 0.9, d: 1.9, h: 0.04, color: '#C98FA8', solid: false },
+  // 瑜珈墊 ×3：中央偏左，長邊沿 Z
+  { id: 'gymmat-0', type: 'gymmat', x: 13.4, z: -1.5, w: 0.9, d: 1.9, h: 0.04, color: '#6C8EBF', solid: false },
+  { id: 'gymmat-1', type: 'gymmat', x: 15.2, z: -1.5, w: 0.9, d: 1.9, h: 0.04, color: '#8FB58A', solid: false },
+  { id: 'gymmat-2', type: 'gymmat', x: 17.0, z: -1.5, w: 0.9, d: 1.9, h: 0.04, color: '#C98FA8', solid: false },
 
   // 臥推區：平板椅 + 槓鈴架（槓鈴放在架上，不擋路）
   // rotY=π：使用者面向 -Z（槓鈴架在 -Z 端），起身點落在 +Z 腳端
@@ -143,28 +143,28 @@ const gym: FurnitureDef[] = [
   { id: 'rack-0', type: 'rack', x: 15.0, z: 2.75, w: 2.0, d: 0.3, h: 1.1, color: '#4B5563' },
 
   // 啞鈴架：靠右牆（露台門在 z 3.6~6.4，別擋出入口），四個啞鈴由伺服端以可撿道具放在架上（見 weapons.ts DUMBBELL_RACK_SLOTS）
-  { id: 'dumbbell-rack', type: 'rack', x: 19.3, z: -2.4, w: 0.5, d: 2.2, h: 0.55, color: '#4B5563' },
-  // Smith 訓練架：綜合架在中央偏右（走道 z 3.95~6.05 之外），深蹲架靠前左角
-  { id: 'smith-machine', type: 'prop', variant: 'smith-machine', x: 17.9, z: 1.6, w: 3.6, d: 3.4, h: 2.47, color: '#9AA3AD', rotY: Math.PI },
-  { id: 'squat-rack', type: 'prop', variant: 'squat-rack', x: 13.4, z: 7.0, w: 2.55, d: 1.66, h: 2.44, color: '#9AA3AD', rotY: Math.PI / 2 },
+  { id: 'dumbbell-rack', type: 'rack', x: 22.6, z: -2.4, w: 0.5, d: 2.2, h: 0.55, color: '#4B5563' },
+  // Smith 訓練架：綜合架在右半區（走道 z 3.95~6.05 之外），深蹲架靠前左角
+  { id: 'smith-machine', type: 'prop', variant: 'smith-machine', x: 20.4, z: 1.0, w: 2.72, d: 2.55, h: 2.44, color: '#9AA3AD', rotY: Math.PI },
+  { id: 'squat-rack', type: 'prop', variant: 'squat-rack', x: 16.2, z: 7.1, w: 2.55, d: 1.66, h: 2.44, color: '#9AA3AD', rotY: Math.PI / 2 },
 
   // 盆栽點綴（plant-gym-1 因深蹲架讓位移到前方中段）
-  { id: 'plant-gym-0', type: 'plant', x: 19.4, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
-  { id: 'plant-gym-1', type: 'plant', x: 15.9, z: 7.5, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
+  { id: 'plant-gym-0', type: 'plant', x: 22.4, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
+  { id: 'plant-gym-1', type: 'plant', x: 12.7, z: 7.5, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
 ];
 
 /** 戶外露台（匹克球場）：與健身房之間的玻璃隔間（缺口 z 3.6~6.4 為出入口）、球網碰撞、觀眾椅 */
 const terrace: FurnitureDef[] = [
-  { id: 'terrace-wall-0', type: 'partition', x: 20, z: -2.2, w: 0.16, d: 11.6, h: 1.6, color: '#BFD7EA' },
-  { id: 'terrace-wall-1', type: 'partition', x: 20, z: 7.2, w: 0.16, d: 1.6, h: 1.6, color: '#BFD7EA' },
-  // 球網：碰撞實體，外觀由 PickleCourt 繪製
-  { id: 'pickle-net', type: 'prop', variant: 'pickle-net', x: 29, z: 0, w: 0.14, d: 6.7, h: 0.92 },
+  { id: 'terrace-wall-0', type: 'partition', x: TERRACE_WALL_X, z: -2.2, w: 0.16, d: 11.6, h: 1.6, color: '#BFD7EA' },
+  { id: 'terrace-wall-1', type: 'partition', x: TERRACE_WALL_X, z: 7.2, w: 0.16, d: 1.6, h: 1.6, color: '#BFD7EA' },
+  // 球網：碰撞實體，外觀由 PickleCourt 繪製（x 與 COURT.netX 對齊）
+  { id: 'pickle-net', type: 'prop', variant: 'pickle-net', x: 32, z: 0, w: 0.14, d: 6.7, h: 0.92 },
   // 觀眾椅（可坐，面向球場）
-  { id: 'court-chair-0', type: 'chair', variant: 'meeting-chair', x: 27, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
-  { id: 'court-chair-1', type: 'chair', variant: 'meeting-chair', x: 29, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
-  { id: 'court-chair-2', type: 'chair', variant: 'meeting-chair', x: 31, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
-  { id: 'plant-terrace-0', type: 'plant', x: 20.8, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
-  { id: 'plant-terrace-1', type: 'plant', x: 37.3, z: 7.3, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
+  { id: 'court-chair-0', type: 'chair', variant: 'meeting-chair', x: 30, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
+  { id: 'court-chair-1', type: 'chair', variant: 'meeting-chair', x: 32, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
+  { id: 'court-chair-2', type: 'chair', variant: 'meeting-chair', x: 34, z: 6.4, w: 0.45, d: 0.45, h: 0.9, color: '#6D8B74', rotY: Math.PI },
+  { id: 'plant-terrace-0', type: 'plant', x: 23.8, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
+  { id: 'plant-terrace-1', type: 'plant', x: 40.3, z: 7.3, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
 ];
 FURNITURE.push(...terrace);
 

@@ -167,7 +167,7 @@ export function SceneEnvironment() {
   useEffect(() => {
     const d = dir.current;
     if (!d) return;
-    d.target.position.set(13, 0, 0);
+    d.target.position.set(14.5, 0, 0);
     scene.add(d.target);
     return () => {
       scene.remove(d.target);
@@ -227,7 +227,7 @@ export function SceneEnvironment() {
       <hemisphereLight ref={hemi} args={['#FFFFFF', '#C9B7A0', 0.5]} />
       <directionalLight
         ref={dir}
-        position={[31, 24, 10]}
+        position={[33, 25, 10]}
         intensity={1.6}
         castShadow
         shadow-mapSize={[1024, 1024]}

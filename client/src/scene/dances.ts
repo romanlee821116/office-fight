@@ -1,9 +1,9 @@
 import type { AnimState, DanceId } from '@office/shared';
 
 /** 由程式計算姿勢的動作（舞步 + 器材動作） */
-export type ProceduralAnim = DanceId | 'benchpress' | 'curl' | 'swing';
+export type ProceduralAnim = DanceId | 'benchpress' | 'curl' | 'squat' | 'swing';
 export function isProcedural(anim: AnimState): anim is ProceduralAnim {
-  return anim === 'benchpress' || anim === 'curl' || anim === 'swing' || anim.startsWith('dance-');
+  return anim === 'benchpress' || anim === 'curl' || anim === 'squat' || anim === 'swing' || anim.startsWith('dance-');
 }
 
 /** 一次性的程式動作（以觸發時間為 0 起算，而非牆上時鐘節拍） */
@@ -39,7 +39,7 @@ export function swingPose(t: number): DancePose {
   };
 }
 /** 各程式動作的節拍 */
-export const PROCEDURAL_BPM: Record<string, number> = { benchpress: 60, curl: 80 };
+export const PROCEDURAL_BPM: Record<string, number> = { benchpress: 60, curl: 80, squat: 46 };
 
 /** 各節點的姿勢（角色模型單位、弧度）。root 的 y 為上下位移、rotY 為整體轉向 */
 export interface DancePose {
@@ -94,6 +94,20 @@ export function dancePose(id: ProceduralAnim, beat: number): DancePose {
         armR: [arm, 0, -0.35],
         legL: -1.2,
         legR: -1.2,
+      };
+    }
+    case 'squat': {
+      // 槓鈴深蹲：雙手舉起扶住肩後的橫桿，身體隨節拍蹲下起立
+      const down = (1 - Math.cos(b * Math.PI)) / 2; // 0 站立 → 1 蹲到底
+      return {
+        rootY: -down * 0.55,
+        rootRotY: 0,
+        torso: [down * 0.42, 0, 0], // 蹲下時上身前傾
+        head: [-down * 0.3, 0, 0], // 頭保持看前方
+        armL: [-2.45, 0, 0.55],
+        armR: [-2.45, 0, -0.55],
+        legL: -down * 1.15,
+        legR: -down * 1.15,
       };
     }
     case 'curl': {

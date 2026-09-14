@@ -12,6 +12,7 @@ export type AnimState =
   | 'dead'
   | 'benchpress'
   | 'curl'
+  | 'squat'
   | 'swing'
   | DanceId;
 
@@ -49,6 +50,7 @@ export const ANIM_STATES: readonly AnimState[] = [
   'dead',
   'benchpress',
   'curl',
+  'squat',
   'swing',
   ...DANCES.map((d) => d.id),
 ];

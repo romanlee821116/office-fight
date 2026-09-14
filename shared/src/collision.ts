@@ -36,6 +36,9 @@ export function resolvePosition(x: number, z: number, r: number = PLAYER_RADIUS)
     else z = maxZ;
   }
 
+  // 再夾一次：貼牆家具可能把人推到牆外
+  x = clamp(x, ROOM_MIN_X + r, ROOM_MAX_X - r);
+  z = clamp(z, ROOM_MIN_Z + r, ROOM_MAX_Z - r);
   return { x, z };
 }
 
