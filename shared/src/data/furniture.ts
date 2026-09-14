@@ -144,9 +144,13 @@ const gym: FurnitureDef[] = [
 
   // 啞鈴架：靠右牆（露台門在 z 3.6~6.4，別擋出入口），四個啞鈴由伺服端以可撿道具放在架上（見 weapons.ts DUMBBELL_RACK_SLOTS）
   { id: 'dumbbell-rack', type: 'rack', x: 19.3, z: -2.4, w: 0.5, d: 2.2, h: 0.55, color: '#4B5563' },
-  // 盆栽點綴
+  // Smith 訓練架：綜合架在中央偏右（走道 z 3.95~6.05 之外），深蹲架靠前左角
+  { id: 'smith-machine', type: 'prop', variant: 'smith-machine', x: 17.9, z: 1.6, w: 3.6, d: 3.4, h: 2.47, color: '#9AA3AD', rotY: Math.PI },
+  { id: 'squat-rack', type: 'prop', variant: 'squat-rack', x: 13.4, z: 7.0, w: 2.55, d: 1.66, h: 2.44, color: '#9AA3AD', rotY: Math.PI / 2 },
+
+  // 盆栽點綴（plant-gym-1 因深蹲架讓位移到前方中段）
   { id: 'plant-gym-0', type: 'plant', x: 19.4, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
-  { id: 'plant-gym-1', type: 'plant', x: 12.6, z: 7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
+  { id: 'plant-gym-1', type: 'plant', x: 15.9, z: 7.5, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
 ];
 
 /** 戶外露台（匹克球場）：與健身房之間的玻璃隔間（缺口 z 3.6~6.4 為出入口）、球網碰撞、觀眾椅 */

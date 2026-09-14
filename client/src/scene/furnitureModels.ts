@@ -121,6 +121,9 @@ const BARBELL: Recolor[] = [
 const BY_TYPE: Partial<Record<string, Part[]>> = {
   // 模型的控制面板在 -Z 端，轉 180° 讓面板落在跑者（面向 -Z 鏡子）前方
   treadmill: [{ model: 'gym/treadmill', scale: 1.3, rotY: Math.PI }],
+  // Smith 訓練架（原始單位為毫米，縮 0.001 即為公尺）
+  'smith-machine': [{ model: 'gym/smith-machine', scale: 0.001 }],
+  'squat-rack': [{ model: 'gym/squat-rack', scale: 0.001 }],
   gymmat: [{ model: 'gym/gymmat', scale: 1.15, recolor: GYM_MAT }],
   barbell: [{ model: 'gym/barbell', scale: 0.46, recolor: BARBELL }],
   dumbbell: [{ model: 'gym/dumbbell', scale: 1 }],
@@ -163,7 +166,7 @@ const ALL_MODELS = new Set<string>();
 for (const parts of [...Object.values(BY_ID), ...Object.values(BY_TYPE)]) {
   parts?.forEach((p) => ALL_MODELS.add(p.model));
 }
-['desk', 'laptop', 'computerScreen', 'computerKeyboard', 'plantSmall2', 'gym/treadmill', 'gym/gymmat', 'gym/barbell', 'gym/dumbbell'].forEach((m) =>
+['desk', 'laptop', 'computerScreen', 'computerKeyboard', 'plantSmall2', 'gym/treadmill', 'gym/gymmat', 'gym/barbell', 'gym/dumbbell', 'gym/smith-machine', 'gym/squat-rack'].forEach((m) =>
   ALL_MODELS.add(m),
 );
 ALL_MODELS.forEach((m) => useGLTF.preload(kitUrl(m)));
