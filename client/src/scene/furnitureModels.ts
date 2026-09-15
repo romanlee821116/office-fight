@@ -140,6 +140,8 @@ const BY_TYPE: Partial<Record<string, Part[]>> = {
   coatrack: [{ model: 'coatRackStanding' }],
   stool: [{ model: 'stoolBar' }],
   'kitchen-upper': [{ model: 'kitchenCabinetUpper' }],
+  // 廚房烤箱（constants.ts 的 OVEN）：電烤箱造型，門在局部 +Z，家具 rotY 轉成面向 +X
+  oven: [{ model: 'kitchenStoveElectric' }],
   lamp: [{ model: 'lampRoundFloor' }],
 };
 

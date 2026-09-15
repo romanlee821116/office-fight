@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { FIGHT, getWeapon } from '@office/shared';
-import { sendDrop, sendToggleFight } from '../net/client';
+import { sendToggleFight } from '../net/client';
 import { useGame } from '../store/useGame';
 
-/** 格鬥模式開關、血量與倒地倒數 */
+/** 格鬥模式開關、手上物品與血量。物品的操作（放下 / 丟出 / 吃）都在底部的 InteractionBar */
 export function FightPanel() {
   const meId = useGame((s) => s.me?.sessionId);
   const me = useGame((s) => (meId ? s.players[meId] : undefined));
@@ -41,26 +41,11 @@ export function FightPanel() {
           <span aria-hidden>{inDuel ? '⚔️' : '🥊'}</span>
           {inDuel ? '決鬥中' : `格鬥模式：${on ? '開' : '關'}`}
         </button>
-        {on && !dead && (
-          <span className="text-[11px] opacity-60">
-            <kbd className="rounded bg-ink/10 px-1 font-bold">空白鍵</kbd> {weapon ? (weapon.kind === 'melee' ? '揮擊' : '丟出') : '攻擊'}
-          </span>
-        )}
       </div>
       <div className="flex items-center gap-2 text-xs">
         <span className="opacity-60">{weapon?.exercise && !on ? '器材：' : '武器：'}</span>
         <span className="font-medium">{weapon ? weapon.name : '拳頭'}</span>
-        {weapon?.exercise && !on && (
-          <span className="opacity-60">
-            <kbd className="rounded bg-ink/10 px-1 font-bold">空白鍵</kbd> 彎舉
-          </span>
-        )}
         {weapon?.kind === 'shoot' && <span className="rounded bg-ink/10 px-1.5 tabular-nums">{me.ammo} 發</span>}
-        {weapon && !dead && (
-          <button type="button" onClick={sendDrop} className="rounded bg-white/70 px-1.5 py-0.5 text-[11px] cursor-pointer hover:bg-white" title="丟下武器（Q）">
-            丟下 <kbd className="font-bold">Q</kbd>
-          </button>
-        )}
       </div>
       {on && (
         <div className="flex items-center gap-2">

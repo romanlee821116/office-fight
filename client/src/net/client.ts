@@ -1,6 +1,7 @@
 import { Client, getStateCallbacks, type Room } from 'colyseus.js';
 import {
   DUEL,
+  EAT,
   FIGHT,
   Messages,
   SEAT_BY_ID,
@@ -35,6 +36,7 @@ import {
   projectileQueue,
   remoteTargets,
   resetRuntime,
+  startEat,
   triggerSwing,
 } from '../scene/runtime';
 
@@ -44,6 +46,8 @@ interface OfficeStateShape {
   pets: Map<string, PetState>;
   stoveFoodId: string;
   stoveStage: string;
+  ovenFoodId: string;
+  ovenStage: string;
   courtStatus: string;
   courtPlayerA: string;
   courtPlayerB: string;
@@ -254,6 +258,11 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     useGame.getState().setStove({ foodId: r.state.stoveFoodId ?? '', stage: r.state.stoveStage ?? '' });
   $(r.state).listen('stoveFoodId', syncStove);
   $(r.state).listen('stoveStage', syncStove);
+
+  // 烤箱狀態
+  const syncOven = () => useGame.getState().setOven({ foodId: r.state.ovenFoodId ?? '', stage: r.state.ovenStage ?? '' });
+  $(r.state).listen('ovenFoodId', syncOven);
+  $(r.state).listen('ovenStage', syncOven);
 
   // 匹克球
   const syncCourt = () =>
@@ -548,6 +557,23 @@ export function sendStovePlace(): void {
 
 export function sendStoveTake(): void {
   room?.send(Messages.stoveTake);
+}
+
+export function sendOvenPlace(): void {
+  room?.send(Messages.ovenPlace);
+}
+
+export function sendOvenTake(): void {
+  room?.send(Messages.ovenTake);
+}
+
+/**
+ * 吃掉手上的食物：本地先播進食動作，咬下第一口時才通知伺服端，
+ * 食物才不會在動作一開始就從手上消失。動作播完前重複呼叫會被 startEat 擋掉。
+ */
+export function eatHeldFood(): void {
+  if (!startEat()) return;
+  setTimeout(() => room?.send(Messages.eat), EAT.sendDelayMs);
 }
 
 export function sendPetPickup(petId: string): void {

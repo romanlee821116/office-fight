@@ -5,6 +5,7 @@ import {
   COURT,
   DANCES,
   EMOTES,
+  OVEN,
   PET,
   PICKUPS,
   RUN_SPEED,
@@ -19,6 +20,7 @@ import {
   type AnimState,
 } from '@office/shared';
 import {
+  eatHeldFood,
   sendAttack,
   sendCourtJoin,
   sendDrop,
@@ -27,6 +29,8 @@ import {
   sendPetDrop,
   sendPetPickup,
   sendPetThrow,
+  sendOvenPlace,
+  sendOvenTake,
   sendPickup,
   sendSit,
   sendStand,
@@ -137,7 +141,7 @@ export function LocalPlayer() {
     }
   }, []);
 
-  // E：撿武器 / 坐下 / 起身；空白鍵：攻擊；Q：丟下武器；數字鍵：表情
+  // E：撿武器 / 坐下 / 起身；空白鍵：攻擊；Q：放下武器；R：吃掉食物；數字鍵：表情
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target) || e.repeat) return;
@@ -165,7 +169,7 @@ export function LocalPlayer() {
         return;
       }
       if (e.code === 'KeyF') {
-        // 拿著食物：餵附近的寵物，否則放上瓦斯爐
+        // 拿著食物：餵附近的寵物，否則放進烤箱 / 放上瓦斯爐
         if (local.dead || local.seatId) return;
         const st = useGame.getState();
         if (carriedPetId(st.me?.sessionId)) return; // 抱著寵物時手上的食物先留著
@@ -173,9 +177,15 @@ export function LocalPlayer() {
         if (!weapon?.edible) return;
         if (st.nearPetId) {
           sendFeedPet(st.nearPetId);
+        } else if (st.nearOven && !st.oven.foodId && weapon.bakesTo) {
+          sendOvenPlace();
         } else if (st.nearStove && !st.stove.foodId) {
           sendStovePlace();
         }
+        return;
+      }
+      if (e.code === 'KeyR') {
+        eatHeldFood();
         return;
       }
       if (e.code === 'KeyQ') {
@@ -196,6 +206,8 @@ export function LocalPlayer() {
           sendCourtJoin(state.nearCourtSlot);
         } else if (nearPetId) {
           sendPetPickup(nearPetId);
+        } else if (state.nearOven && state.oven.foodId && !local.weaponId) {
+          sendOvenTake(); // 空手把烤箱裡的食物拿出來
         } else if (state.nearStove && state.stove.stage === 'cooking' && !local.weaponId) {
           sendStoveTake(); // 空手把煎著的食物拿回來
         } else if (nearPickupId) {
@@ -302,8 +314,11 @@ export function LocalPlayer() {
       local.emote = null;
       local.dance = null;
       local.exercise = null;
+      local.eatUntil = 0;
     } else if (staggered) {
       anim = 'hit';
+    } else if (now < local.eatUntil) {
+      anim = 'eat';
     } else if (local.emote && now < local.emoteUntil) {
       anim = local.emote;
     } else if (local.dance) {
@@ -328,7 +343,11 @@ export function LocalPlayer() {
       useGame.getState().setNearSeat(seat?.id ?? null);
       useGame.getState().setNearPickup(nearestPickup(local.x, local.z));
       useGame.getState().setNearPet(nearestPet(local.x, local.z));
-      useGame.getState().setNearStove(Math.hypot(local.x - STOVE.x, local.z - STOVE.z) <= STOVE.range);
+      // 爐子與烤箱只隔 2.6m，站在冰箱前會同時進到兩者範圍；只認比較近的那一台，提示才不會打架
+      const dStove = Math.hypot(local.x - STOVE.x, local.z - STOVE.z);
+      const dOven = Math.hypot(local.x - OVEN.x, local.z - OVEN.z);
+      useGame.getState().setNearStove(dStove <= STOVE.range && dStove <= dOven);
+      useGame.getState().setNearOven(dOven <= OVEN.range && dOven < dStove);
       const court = useGame.getState().court;
       const nearA = Math.hypot(local.x - COURT.slotA.x, local.z - COURT.slotA.z) <= COURT.joinRange;
       const nearB = Math.hypot(local.x - COURT.slotB.x, local.z - COURT.slotB.z) <= COURT.joinRange;

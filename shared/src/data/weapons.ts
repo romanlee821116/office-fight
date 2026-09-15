@@ -1,4 +1,10 @@
+import { FIGHT, OVEN } from '../constants';
 import type { WeaponDef } from '../types';
+
+/** 可頌基準尺寸（模型 0.35 x 0.19 x 0.48）；和漢堡差不多大，手持時才不會擋住角色 */
+const CROISSANT_SCALE = 0.7;
+/** 烤過的可頌：OVEN.bakeScale 倍大 */
+const BAKED_SCALE = CROISSANT_SCALE * OVEN.bakeScale;
 
 /**
  * 食物武器（Kenney Food Kit，CC0）。
@@ -76,7 +82,43 @@ export const WEAPONS: WeaponDef[] = [
     scale: 0.8,
     grip: { position: [-0.25, -1.05, 0.25], rotation: [0, 0, 0], scale: 0.7 / 0.65 },
   },
+  {
+    id: 'croissant',
+    edible: true,
+    name: '可頌',
+    model: 'croissant',
+    kind: 'melee',
+    damage: 35,
+    range: 1.7,
+    knockback: 2.2,
+    cooldownMs: 650,
+    scale: CROISSANT_SCALE,
+    // 和漢堡一樣平放在手上（不像法國麵包那樣立起來當球棒），才不會遮住角色上半身
+    grip: { position: [-0.2, -1.05, 0.2], rotation: [0, 0, 0], scale: CROISSANT_SCALE / 0.65 },
+    bakesTo: 'croissant-baked',
+  },
 ];
+
+/**
+ * 巨無霸可頌：可頌在烤箱烤 5 秒的產物，體型三倍大、吃下去回滿血。
+ * 傷害與擊退刻意維持和原味可頌一樣，只有判定距離配合長度加長，才不會破壞格鬥平衡。
+ */
+WEAPONS.push({
+  id: 'croissant-baked',
+  edible: true,
+  heal: FIGHT.maxHp,
+  name: '巨無霸可頌',
+  model: 'croissant',
+  kind: 'melee',
+  damage: 35,
+  range: 2.1,
+  knockback: 2.2,
+  cooldownMs: 650,
+  scale: BAKED_SCALE,
+  // 長度到 1m，握點再往下往前挪，讓它掛在手前方而不是蓋住頭
+  grip: { position: [-0.2, -1.18, 0.45], rotation: [0, 0, 0], scale: BAKED_SCALE / 0.65 },
+  spawnable: false,
+});
 
 /** 健身器材：只出現在啞鈴架上，可當重型近戰武器，也可在非格鬥模式做彎舉 */
 WEAPONS.push({
@@ -111,6 +153,12 @@ WEAPONS.push({
 
 export const WEAPON_BY_ID = new Map(WEAPONS.map((w) => [w.id, w]));
 export const SPAWNABLE_WEAPONS = WEAPONS.filter((w) => w.spawnable !== false);
+
+/**
+ * 廚房早餐吧檯上固定供應的可頌（配合 furniture.ts 的 kitchen-bar，檯面高 0.84）。
+ * 被拿走後伺服端會再放一個，所以隨時走進廚房都拿得到可頌去烤。
+ */
+export const KITCHEN_CROISSANT_SPOT = { x: -8.6, z: 3.45, y: 0.84 };
 
 /** 啞鈴架上四個啞鈴的初始位置（配合 furniture.ts 的 dumbbell-rack） */
 export const DUMBBELL_RACK_SLOTS = [-0.8, -0.27, 0.27, 0.8].map((dz) => ({ x: 22.6, z: -2.4 + dz, y: 0.55 }));

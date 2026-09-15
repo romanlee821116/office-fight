@@ -9,11 +9,14 @@ import {
   PETS,
   PET_EAT_MS,
   COURT,
+  EAT,
+  OVEN,
   STOVE,
   WEATHER,
   getPet,
   petSizeFactor,
   DUMBBELL_RACK_SLOTS,
+  KITCHEN_CROISSANT_SPOT,
   PICKUPS,
   SEAT_BY_ID,
   SPAWNABLE_WEAPONS,
@@ -90,6 +93,8 @@ interface ClientMeta {
   chatTimestamps: number[];
   lastAttackAt: number;
   respawnTimer: { clear(): void } | null;
+  /** 溜滑梯這類一次性設施的自動起身計時器 */
+  rideTimer: { clear(): void } | null;
   /** 最後一次被爐火燒到的時間 */
   lastBurnAt: number;
   /** 分頁切到背景的時間戳，null 代表分頁在前景 */
@@ -166,6 +171,7 @@ export class OfficeRoom extends Room<OfficeState> {
   private courtServeSide: CourtSide = 'A';
   private stoveGoneTimer: { clear(): void } | null = null;
   private stovePlacedBy = '';
+  private ovenTimer: { clear(): void } | null = null;
 
   /** 註冊訊息處理，並統一把任何操作記為活動時間（閒置判定用） */
   private onPlayerMessage<T>(type: string, handler: (client: Client, payload: T) => void): void {
@@ -199,6 +205,9 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<{ petId: string }>(Messages.feedPet, (client, payload) => this.handleFeedPet(client, payload));
     this.onPlayerMessage(Messages.stovePlace, (client) => this.handleStovePlace(client));
     this.onPlayerMessage(Messages.stoveTake, (client) => this.handleStoveTake(client));
+    this.onPlayerMessage(Messages.ovenPlace, (client) => this.handleOvenPlace(client));
+    this.onPlayerMessage(Messages.ovenTake, (client) => this.handleOvenTake(client));
+    this.onPlayerMessage(Messages.eat, (client) => this.handleEat(client));
     this.onPlayerMessage<{ side: CourtSide }>(Messages.courtJoin, (client, payload) => this.handleCourtJoin(client, payload));
     this.onPlayerMessage(Messages.courtLeave, (client) => this.handleCourtLeave(client));
     this.onPlayerMessage<SwingPayload>(Messages.swing, (client, payload) => this.handleSwing(client, payload));
@@ -207,7 +216,9 @@ export class OfficeRoom extends Room<OfficeState> {
 
     for (let i = 0; i < PICKUPS.initial; i++) this.spawnPickup();
     for (const slot of DUMBBELL_RACK_SLOTS) this.addPickup('dumbbell', slot.x, slot.z, slot.y, false);
+    this.restockKitchen();
     this.clock.setInterval(() => this.spawnPickup(), PICKUPS.intervalMs);
+    this.clock.setInterval(() => this.restockKitchen(), PICKUPS.kitchenRestockMs);
     this.clock.setInterval(() => this.checkIdlePlayers(), IDLE.checkIntervalMs);
 
     for (let i = 0; i < PET.count; i++) this.spawnPet(false);
@@ -313,6 +324,7 @@ export class OfficeRoom extends Room<OfficeState> {
       chatTimestamps: [],
       lastAttackAt: 0,
       respawnTimer: null,
+      rideTimer: null,
       lastBurnAt: 0,
       hiddenSince: null,
       idleWarned: false,
@@ -339,7 +351,9 @@ export class OfficeRoom extends Room<OfficeState> {
       }
     }
 
-    this.meta.get(client.sessionId)?.respawnTimer?.clear();
+    const leavingMeta = this.meta.get(client.sessionId);
+    leavingMeta?.respawnTimer?.clear();
+    leavingMeta?.rideTimer?.clear();
     this.clearInvitesFor(client.sessionId);
     if (player.duelWith) {
       const opponent = this.state.players.get(player.duelWith);
@@ -408,6 +422,18 @@ export class OfficeRoom extends Room<OfficeState> {
     player.anim = seat.anim;
     meta.lastActivityAt = Date.now();
     meta.lastMoveAt = Date.now();
+
+    // 溜滑梯是一次性體驗：滑完自動起身，免得有人卡在滑道上佔著設施
+    meta.rideTimer?.clear();
+    meta.rideTimer = null;
+    if (seat.rideMs) {
+      meta.rideTimer = this.clock.setTimeout(() => {
+        const meta2 = this.meta.get(client.sessionId);
+        if (meta2) meta2.rideTimer = null;
+        // 期間可能已經自己起身或又坐到別的設施，只處理還在同一個座位的情況
+        if (this.state.players.get(client.sessionId)?.seatId === seat.id) this.handleStand(client);
+      }, seat.rideMs);
+    }
   }
 
   private handleStand(client: Client): void {
@@ -415,6 +441,8 @@ export class OfficeRoom extends Room<OfficeState> {
     const meta = this.meta.get(client.sessionId);
     if (!player || !meta || !player.seatId) return;
 
+    meta.rideTimer?.clear();
+    meta.rideTimer = null;
     const seat = SEAT_BY_ID.get(player.seatId);
     const point = seat ? standPointForSeat(seat) : { x: player.x, z: player.z };
     player.seatId = '';
@@ -642,9 +670,9 @@ export class OfficeRoom extends Room<OfficeState> {
 
   /** 定時在空地隨機生成一把武器 */
   private spawnPickup(): void {
-    // 架上的啞鈴不算在隨機生成的上限內
+    // 架上的啞鈴與吧檯上的可頌放在檯面（y > 0），不算在地面隨機生成的上限內
     let randomCount = 0;
-    for (const p of this.state.pickups.values()) if (WEAPON_BY_ID.get(p.weaponId)?.spawnable !== false) randomCount++;
+    for (const p of this.state.pickups.values()) if (p.y === 0 && WEAPON_BY_ID.get(p.weaponId)?.spawnable !== false) randomCount++;
     if (randomCount >= PICKUPS.max) return;
     const { area, clearance } = PICKUPS;
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -660,6 +688,15 @@ export class OfficeRoom extends Room<OfficeState> {
       this.addPickup(weapon.id, pos.x, pos.z);
       return;
     }
+  }
+
+  /** 廚房吧檯固定供應一個可頌：被拿走（或被拿去烤）後就再放一個回檯面 */
+  private restockKitchen(): void {
+    const spot = KITCHEN_CROISSANT_SPOT;
+    for (const p of this.state.pickups.values()) {
+      if (p.weaponId === 'croissant' && Math.hypot(p.x - spot.x, p.z - spot.z) < 0.3) return;
+    }
+    this.addPickup('croissant', spot.x, spot.z, spot.y, false);
   }
 
   private handlePickup(client: Client, payload: PickupPayload): void {
@@ -1052,6 +1089,73 @@ export class OfficeRoom extends Room<OfficeState> {
           ? `🐾 ${player.name} 餵${name}吃了${weapon.name}，${name}長成超巨大了！`
           : `🐾 ${player.name} 餵${name}吃了${weapon.name}，${name}長大了一點`
         : `🐾 ${player.name} 餵${name}吃了${weapon.name}，但${name}已經吃得超飽`,
+    );
+  }
+
+  // ---------- 烤箱 ----------
+
+  private nearOven(player: Player): boolean {
+    return Math.hypot(player.x - OVEN.x, player.z - OVEN.z) <= OVEN.range + 0.6;
+  }
+
+  private clearOven(): void {
+    this.ovenTimer?.clear();
+    this.ovenTimer = null;
+    this.state.ovenFoodId = '';
+    this.state.ovenStage = '';
+  }
+
+  /** 把手上可以烤的食物放進烤箱；OVEN.bakeMs 後出爐，變成 bakesTo 指定的放大版 */
+  private handleOvenPlace(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId) return;
+    const weapon = WEAPON_BY_ID.get(player.weaponId);
+    if (!weapon?.bakesTo) return;
+    if (this.state.ovenFoodId || !this.nearOven(player)) return;
+
+    player.weaponId = '';
+    player.ammo = 0;
+    this.state.ovenFoodId = weapon.id;
+    this.state.ovenStage = 'baking';
+    this.broadcastSystem(`🥐 ${player.name} 把${weapon.name}放進烤箱`);
+
+    this.ovenTimer = this.clock.setTimeout(() => {
+      if (this.state.ovenStage !== 'baking' || this.state.ovenFoodId !== weapon.id) return;
+      const baked = WEAPON_BY_ID.get(weapon.bakesTo ?? '');
+      this.state.ovenFoodId = baked?.id ?? weapon.id;
+      this.state.ovenStage = 'done';
+      this.broadcastSystem(`🔔 烤箱叮了一聲，${baked?.name ?? weapon.name}出爐了！`);
+    }, OVEN.bakeMs);
+  }
+
+  /** 空手把烤箱裡的食物拿出來（還在烤就拿回原本那個） */
+  private handleOvenTake(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId || player.weaponId) return;
+    if (!this.state.ovenFoodId || !this.nearOven(player)) return;
+    const weapon = WEAPON_BY_ID.get(this.state.ovenFoodId);
+    this.clearOven();
+    if (!weapon) return;
+    player.weaponId = weapon.id;
+    player.ammo = weapon.ammo ?? 0;
+  }
+
+  // ---------- 吃東西 ----------
+
+  /** 吃掉手上的食物：食物消耗、回復血量（上限 FIGHT.maxHp），進食動作由客戶端播放 */
+  private handleEat(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId) return;
+    const weapon = WEAPON_BY_ID.get(player.weaponId);
+    if (!weapon?.edible) return;
+
+    const before = player.hp;
+    player.hp = Math.min(FIGHT.maxHp, player.hp + (weapon.heal ?? EAT.healHp));
+    player.weaponId = '';
+    player.ammo = 0;
+    const gained = player.hp - before;
+    this.broadcastSystem(
+      gained > 0 ? `🍽️ ${player.name} 吃掉了${weapon.name}，回復 ${gained} 點血量` : `🍽️ ${player.name} 吃掉了${weapon.name}，但已經很飽了`,
     );
   }
 

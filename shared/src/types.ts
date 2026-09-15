@@ -10,11 +10,18 @@ export type AnimState =
   | 'throw'
   | 'hit'
   | 'dead'
+  /** 吃掉手上的食物（程式生成動作） */
+  | 'eat'
   | 'benchpress'
   | 'benchpress-incline'
   | 'curl'
   | 'squat'
   | 'swing'
+  | 'slide'
+  | 'swing-ride'
+  /** 蹺蹺板兩端傾斜方向相反，因此左右各一個動作 */
+  | 'seesaw-a'
+  | 'seesaw-b'
   | DanceId;
 
 export type DanceId = 'dance-swing' | 'dance-robot' | 'dance-squat' | 'dance-groove';
@@ -49,11 +56,16 @@ export const ANIM_STATES: readonly AnimState[] = [
   'throw',
   'hit',
   'dead',
+  'eat',
   'benchpress',
   'benchpress-incline',
   'curl',
   'squat',
   'swing',
+  'slide',
+  'swing-ride',
+  'seesaw-a',
+  'seesaw-b',
   ...DANCES.map((d) => d.id),
 ];
 
@@ -83,6 +95,13 @@ export interface Seat {
   anim: AnimState;
   /** 互動提示文字 */
   label: string;
+  /**
+   * 指定的起身位置；省略時由 standPointForSeat 從座位後方推算。
+   * 溜滑梯要落在滑道盡頭、蹺蹺板要往側邊讓開，都不是「座位正後方」。
+   */
+  standAt?: { x: number; z: number };
+  /** 一次性體驗（溜滑梯）：坐上去幾毫秒後由伺服端自動起身 */
+  rideMs?: number;
 }
 
 export interface SitPayload {
@@ -175,8 +194,12 @@ export interface WeaponDef {
   spawnable?: boolean;
   /** 非格鬥模式下按空白鍵的運動動作 */
   exercise?: AnimState;
-  /** 是食物：可以放上瓦斯爐、可以餵寵物 */
+  /** 是食物：可以吃、可以放上瓦斯爐、可以餵寵物 */
   edible?: boolean;
+  /** 吃掉時回復的血量（省略時用 EAT.healHp） */
+  heal?: number;
+  /** 可以放進烤箱烤，烤好後變成這個武器 id */
+  bakesTo?: string;
 }
 
 /** 地上可撿的武器 */
@@ -338,7 +361,9 @@ export type FurnitureType =
   | 'treadmill'
   | 'gymmat'
   | 'bench'
-  | 'rack';
+  | 'rack'
+  /** 遊戲區設施：只提供碰撞，外觀由 Playground 以 playground.glb 繪製 */
+  | 'playground';
 
 export interface FurnitureDef {
   id: string;
@@ -383,6 +408,9 @@ export const Messages = {
   petFlight: 'petFlight',
   stovePlace: 'stovePlace',
   stoveTake: 'stoveTake',
+  ovenPlace: 'ovenPlace',
+  ovenTake: 'ovenTake',
+  eat: 'eat',
   feedPet: 'feedPet',
   courtJoin: 'courtJoin',
   courtLeave: 'courtLeave',

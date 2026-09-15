@@ -21,6 +21,24 @@ export const TERRACE_WALL_X = 23;
 export const INDOOR_MIN_X = ROOM_MIN_X;
 export const INDOOR_MAX_X = TERRACE_WALL_X;
 
+/**
+ * 兒童遊戲區：從露台正前方（z = ROOM_MAX_Z）再往 +Z 延伸的一塊戶外場地，
+ * 只佔露台那一段 X，因此世界外框是 L 形——外層仍以 WORLD_* 夾制，
+ * 左半邊多出來的 (x < PLAY_MIN_X, z > ROOM_MAX_Z) 由 furniture.ts 的隱形碰撞塊擋住。
+ */
+export const PLAY_MIN_X = TERRACE_WALL_X;
+export const PLAY_MAX_X = ROOM_MAX_X;
+export const PLAY_MIN_Z = ROOM_MAX_Z;
+export const PLAY_MAX_Z = 20;
+export const PLAY_CENTER_X = (PLAY_MIN_X + PLAY_MAX_X) / 2;
+export const PLAY_CENTER_Z = (PLAY_MIN_Z + PLAY_MAX_Z) / 2;
+
+/** 世界外框（含遊戲區）：碰撞最外層的夾制範圍 */
+export const WORLD_MIN_X = ROOM_MIN_X;
+export const WORLD_MAX_X = ROOM_MAX_X;
+export const WORLD_MIN_Z = ROOM_MIN_Z;
+export const WORLD_MAX_Z = PLAY_MAX_Z;
+
 /** 玩家 */
 export const PLAYER_RADIUS = 0.35;
 export const WALK_SPEED = 3;
@@ -67,6 +85,8 @@ export const PICKUPS = {
   corridorHalfWidth: 0.6,
   /** 投擲拋物線最高點 */
   throwArcHeight: 1.4,
+  /** 廚房吧檯上的可頌被拿走後，多久檢查一次要不要補上 */
+  kitchenRestockMs: 5000,
 };
 
 /** 辦公室寵物：伺服端 AI 隨機走動 / 停頓 / 跳舞，可被攻擊，死亡後重生新的一隻 */
@@ -138,6 +158,35 @@ export const STOVE = {
   fireLingerMs: 2000,
 };
 
+/**
+ * 廚房烤箱：位於左牆冰箱旁的獨立電烤箱（面向 +X）。
+ * 拿著可以烤的食物（目前只有可頌）走近按 F 放進去，bakeMs 後出爐，空手按 E 取出。
+ */
+export const OVEN = {
+  x: -11.52,
+  z: 0.95,
+  /** 互動距離 */
+  range: 1.7,
+  /** 烤好需要的時間 */
+  bakeMs: 5000,
+  /** 烤箱門（正面 +X）中心高度，運作時這裡會透出爐火的光 */
+  doorY: 0.45,
+  /** 出爐後食物浮在烤箱上方的高度（提示「可以拿了」） */
+  showY: 1.15,
+  /** 烤好後體型變幾倍（weapons.ts 依此推出烤過的食物尺寸） */
+  bakeScale: 3,
+};
+
+/** 吃東西：手上拿著食物按 R（或底部按鈕）吃掉，回復血量 */
+export const EAT = {
+  /** 一般食物回復的血量（個別食物可用 WeaponDef.heal 覆寫） */
+  healHp: 60,
+  /** 進食動作長度 */
+  durationMs: 1400,
+  /** 咬下第一口才通知伺服端，食物才不會在動作一開始就消失 */
+  sendDelayMs: 500,
+};
+
 /** 餵寵物後進食動畫與 AI 暫停的時間 */
 export const PET_EAT_MS = 3000;
 
@@ -187,6 +236,72 @@ export const COURT = {
   secondTouchGraceMs: 120,
   /** 結束畫面停留時間，之後清場 */
   overResetMs: 6000,
+};
+
+/**
+ * 遊戲區設施：所有數值來自 playground.glb 各零件「校正旋轉、縮放 scale、底部對齊 y=0」
+ * 之後的局部座標（公尺），前後端共用（座位表推導、前端擺盪動畫都讀這裡）。
+ *
+ * 模型是一整包 Sketchfab 場景，各設施在檔案裡是歪的，fixYaw 為把它轉正所需的角度；
+ * scale 以鞦韆架原始高 5.94 單位 ≈ 現實 2.4m 校準得出。
+ */
+export const PLAYGROUND = {
+  scale: 0.4,
+  /** 溜滑梯：爬梯在 -Z 端，滑道朝 +Z 下降 */
+  slide: {
+    fixYaw: (57.6 * Math.PI) / 180,
+    /** 對齊後外框（公尺） */
+    width: 1.26,
+    depth: 3.78,
+    /** 爬梯底部（座位就設在這裡：走到梯子旁按 E 開始） */
+    ladderZ: -1.86,
+    /** 平台踏面高度 */
+    deckY: 1.69,
+    /** 滑道起點 / 終點 */
+    chuteTopZ: -0.55,
+    chuteEndZ: 1.8,
+    chuteEndY: 0.2,
+    /** 滑完站起來的位置（要落在碰撞盒外） */
+    exitZ: 2.45,
+    /** 爬梯 → 走到滑道口 → 滑下來 的總時間 */
+    rideMs: 3400,
+    /** 三段動作各自的結束進度 */
+    climbEnd: 0.42,
+    walkEnd: 0.56,
+  },
+  /** 盪鞦韆：橫梁沿 X，兩個座位沿 ±Z 擺盪 */
+  swing: {
+    fixYaw: (19.72 * Math.PI) / 180,
+    width: 4.03,
+    depth: 0.5,
+    height: 2.38,
+    /** 兩個座位的局部 X（架子左右不對稱，數值直接取自模型） */
+    seatX: [-0.38, 0.611] as const,
+    /** 座墊上緣高度 */
+    seatY: 0.71,
+    /** 繩子頂端（擺盪支點）高度 */
+    pivotY: 2.176,
+    /** 擺幅（弧度）與拍速：120/bpm 秒一個來回 */
+    amplitude: 0.55,
+    bpm: 48,
+  },
+  /** 蹺蹺板：板身沿 X，兩端各一個座位 */
+  seesaw: {
+    fixYaw: (46.97 * Math.PI) / 180,
+    width: 3.57,
+    depth: 0.86,
+    seatX: [-1.05, 1.05] as const,
+    /** 水平時的板面高度 */
+    seatY: 0.8,
+    /** 支點（板身繞它傾斜） */
+    pivotY: 0.737,
+    amplitude: 0.26,
+    bpm: 34,
+  },
+  /** 水池 */
+  pond: { width: 3.22, depth: 2.55 },
+  /** 沙坑（純裝飾，可以走過去） */
+  sandbox: { width: 1.64, depth: 1.63 },
 };
 
 /** 決鬥 */

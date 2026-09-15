@@ -1,20 +1,58 @@
-import type { AnimState, DanceId } from '@office/shared';
+import { EAT, PLAYGROUND, type AnimState, type DanceId } from '@office/shared';
 
-/** 由程式計算姿勢的動作（舞步 + 器材動作） */
-export type ProceduralAnim = DanceId | 'benchpress' | 'benchpress-incline' | 'curl' | 'squat' | 'swing';
+/** Kenney Blocky Characters 高 2.7 單位，縮放後約 1.75m；rootY / rootZ 都是模型單位 */
+export const CHARACTER_SCALE = 0.65;
+/** 公尺 → 角色模型單位 */
+function m(metres: number): number {
+  return metres / CHARACTER_SCALE;
+}
+
+/**
+ * 角色骨架的髖部（雙腿的旋轉中心）在 root 上方 1.0 個模型單位，站立時腳掌剛好落在 root。
+ * 因此「坐在高 h 的座面上」不是把 root 放到 h，而是把髖部放上去；
+ * 直接用 m(h) 會變成站在椅子上。SIT_LIFT 再往上墊一點，免得屁股陷進座面。
+ */
+const HIP = 1.0;
+const SIT_LIFT = 0.12;
+function sitRootY(seatHeightMetres: number): number {
+  return m(seatHeightMetres) - HIP + SIT_LIFT;
+}
+
+/** 由程式計算姿勢的動作（舞步 + 器材動作 + 遊樂設施） */
+export type ProceduralAnim =
+  | DanceId
+  | 'benchpress'
+  | 'benchpress-incline'
+  | 'curl'
+  | 'squat'
+  | 'swing'
+  | 'slide'
+  | 'swing-ride'
+  | 'seesaw-a'
+  | 'seesaw-b'
+  | 'eat';
+const PROCEDURAL = new Set<string>([
+  'benchpress',
+  'benchpress-incline',
+  'curl',
+  'squat',
+  'swing',
+  'slide',
+  'swing-ride',
+  'seesaw-a',
+  'seesaw-b',
+  'eat',
+]);
 export function isProcedural(anim: AnimState): anim is ProceduralAnim {
-  return (
-    anim === 'benchpress' ||
-    anim === 'benchpress-incline' ||
-    anim === 'curl' ||
-    anim === 'squat' ||
-    anim === 'swing' ||
-    anim.startsWith('dance-')
-  );
+  return PROCEDURAL.has(anim) || anim.startsWith('dance-');
 }
 
 /** 一次性的程式動作（以觸發時間為 0 起算，而非牆上時鐘節拍） */
-export const ONE_SHOT_PROCEDURAL: Partial<Record<ProceduralAnim, number>> = { swing: 420 };
+export const ONE_SHOT_PROCEDURAL: Partial<Record<ProceduralAnim, number>> = {
+  swing: 420,
+  slide: PLAYGROUND.slide.rideMs,
+  eat: EAT.durationMs,
+};
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
@@ -45,8 +83,123 @@ export function swingPose(t: number): DancePose {
     legR: -0.22 * strike * (1 - settle),
   };
 }
+/**
+ * 溜滑梯（一次性，t 0~1）：爬梯 → 走到滑道口 → 滑下來。
+ * 位移以座位（爬梯底部）為原點，沿設施局部 +Z 前進，與 seats.ts 的 standAt 對得上。
+ */
+export function slidePose(t: number): DancePose {
+  const S = PLAYGROUND.slide;
+  const toChute = S.chuteTopZ - S.ladderZ;
+  const chuteRun = S.chuteEndZ - S.chuteTopZ;
+
+  if (t < S.climbEnd) {
+    // 爬梯：手腳交替，身體貼著梯子往上
+    const k = t / S.climbEnd;
+    const step = Math.sin(k * Math.PI * 3);
+    return {
+      rootY: m(S.deckY * easeOut(k)),
+      rootZ: 0,
+      rootRotY: 0,
+      torso: [0.12, 0, 0],
+      head: [-0.25, 0, 0],
+      armL: [-2.5 + step * 0.45, 0, 0.25],
+      armR: [-2.5 - step * 0.45, 0, -0.25],
+      legL: -0.5 - step * 0.45,
+      legR: -0.5 + step * 0.45,
+    };
+  }
+
+  if (t < S.walkEnd) {
+    // 站上平台、走到滑道口
+    const k = (t - S.climbEnd) / (S.walkEnd - S.climbEnd);
+    return {
+      rootY: m(S.deckY),
+      rootZ: m(toChute * k),
+      rootRotY: 0,
+      torso: [0, 0, 0],
+      head: [0.15, 0, 0],
+      armL: [-0.6, 0, 0.3],
+      armR: [-0.6, 0, -0.3],
+      legL: -0.35 * Math.sin(k * Math.PI * 2),
+      legR: 0.35 * Math.sin(k * Math.PI * 2),
+    };
+  }
+
+  // 滑下來：越滑越快（滑道是 S 形，高度用 smoothstep 貼合曲面），雙手舉高歡呼
+  const k = (t - S.walkEnd) / (1 - S.walkEnd);
+  const along = k * k * (2 - k); // 起步慢、中段快
+  const drop = along * along * (3 - 2 * along);
+  const wob = Math.sin(along * Math.PI * 2) * 0.12;
+  const surfaceY = S.deckY + (S.chuteEndY - S.deckY) * drop;
+  // 滑道口先坐下去，再開始滑
+  const sit = clamp01(k / 0.18);
+  return {
+    rootY: m(surfaceY) - (HIP - SIT_LIFT) * sit,
+    rootZ: m(toChute + chuteRun * along),
+    rootRotY: 0,
+    rootRotX: (0.25 + wob) * sit,
+    torso: [-0.1 * sit, wob * sit, 0],
+    head: [-0.2 * sit, 0, 0],
+    armL: [lerp(-0.6, -2.7, sit), 0, lerp(0.3, 0.5 + wob, sit)],
+    armR: [lerp(-0.6, -2.7, sit), 0, lerp(-0.3, -0.5 + wob, sit)],
+    legL: lerp(0, -1.35, sit),
+    legR: lerp(0, -1.25, sit),
+  };
+}
+
+/**
+ * 吃東西（一次性，t 0~1）：右手把食物舉到嘴邊咬三口再放下。
+ * 食物掛在 arm-right 節點下，所以只要把手臂抬到臉的高度，食物就會跟著送到嘴邊。
+ */
+export function eatPose(t: number): DancePose {
+  // 舉起 → 維持 → 放下
+  const lift = easeOut(clamp01(t / 0.22)) * (1 - easeOut(clamp01((t - 0.78) / 0.22)));
+  const bite = Math.max(0, Math.sin(t * Math.PI * 6)) * lift;
+  return {
+    rootY: 0,
+    rootRotY: 0,
+    torso: [0.06 * lift, 0, 0],
+    head: [0.1 * lift + 0.18 * bite, 0, 0],
+    armR: [-1.75 * lift - 0.18 * bite, 0, -0.3 * lift],
+    armL: [-0.18 * lift, 0, 0.12 * lift],
+    legL: 0,
+    legR: 0,
+  };
+}
+
+/** 一次性程式動作的姿勢分派 */
+export function oneShotPose(id: ProceduralAnim, t: number): DancePose {
+  if (id === 'slide') return slidePose(t);
+  if (id === 'eat') return eatPose(t);
+  return swingPose(t);
+}
+
 /** 各程式動作的節拍 */
-export const PROCEDURAL_BPM: Record<string, number> = { benchpress: 60, 'benchpress-incline': 54, curl: 80, squat: 46 };
+export const PROCEDURAL_BPM: Record<string, number> = {
+  benchpress: 60,
+  'benchpress-incline': 54,
+  curl: 80,
+  squat: 46,
+  'swing-ride': PLAYGROUND.swing.bpm,
+  'seesaw-a': PLAYGROUND.seesaw.bpm,
+  'seesaw-b': PLAYGROUND.seesaw.bpm,
+};
+
+/**
+ * 鞦韆擺角與蹺蹺板傾角：以牆上時鐘的拍數計算，所有客戶端與模型本身都吃同一個值，
+ * 因此人跟座椅永遠黏在一起，也不必為了同步多傳任何狀態。
+ */
+export function swingRideAngle(beat: number): number {
+  return PLAYGROUND.swing.amplitude * Math.sin(beat * Math.PI);
+}
+export function seesawTilt(beat: number): number {
+  return PLAYGROUND.seesaw.amplitude * Math.sin(beat * Math.PI);
+}
+
+/** 依 bpm 把現在時刻換算成拍數（與 Avatar 內的算法一致） */
+export function beatNow(bpm: number): number {
+  return (Date.now() / 1000) * (bpm / 60);
+}
 
 /** 各節點的姿勢（角色模型單位、弧度）。root 的 y 為上下位移、rotY 為整體轉向 */
 export interface DancePose {
@@ -146,6 +299,53 @@ export function dancePose(id: ProceduralAnim, beat: number): DancePose {
         armR: [-0.3 - k * 2.2, 0, -0.15],
         legL: 0,
         legR: 0,
+      };
+    }
+    case 'swing-ride': {
+      // 座椅繞橫梁畫弧（與 Playground 畫的鞦韆用同一條式子，才會完全同步）
+      const S = PLAYGROUND.swing;
+      const rope = S.pivotY - S.seatY;
+      const a = swingRideAngle(b);
+      return {
+        // 盪出去時人往外、往上抬；身體跟著繩子傾斜
+        rootY: sitRootY(S.seatY + rope * (1 - Math.cos(a))),
+        rootZ: m(-rope * Math.sin(a)),
+        rootRotY: 0,
+        rootRotX: a,
+        torso: [0.1 * Math.cos(b * Math.PI), 0, 0],
+        head: [-0.15, 0, 0],
+        // 雙手抓著兩側的繩子
+        armL: [-2.2, 0, 0.22],
+        armR: [-2.2, 0, -0.22],
+        // 盪到兩端時把腿伸直，回到中間收腿
+        legL: -1.45 + Math.abs(a / S.amplitude) * 0.35,
+        legR: -1.4 + Math.abs(a / S.amplitude) * 0.35,
+      };
+    }
+    case 'seesaw-a':
+    case 'seesaw-b': {
+      const S = PLAYGROUND.seesaw;
+      const tilt = seesawTilt(b);
+      // seesaw-a 坐局部 -X 端（面向 +X），seesaw-b 坐 +X 端；兩端高低相反
+      const sideA = id === 'seesaw-a';
+      const x = sideA ? S.seatX[0] : S.seatX[1];
+      const armY = S.seatY - S.pivotY;
+      const dy = x * Math.sin(tilt) + armY * Math.cos(tilt) - armY;
+      // 兩人面向 ±X，角色的局部 X 軸剛好是板身的傾斜軸，但方向相反
+      const lean = sideA ? -tilt : tilt;
+      const rising = dy > 0;
+      return {
+        rootY: sitRootY(S.seatY + dy),
+        rootZ: 0,
+        rootRotY: 0,
+        rootRotX: lean,
+        torso: [rising ? -0.12 : 0.12, 0, 0],
+        head: [rising ? 0.2 : -0.1, 0, 0],
+        // 雙手抓前方把手
+        armL: [-1.5, 0, 0.3],
+        armR: [-1.5, 0, -0.3],
+        legL: -1.2 + (rising ? -0.25 : 0.2),
+        legR: -1.15 + (rising ? -0.25 : 0.2),
       };
     }
     case 'dance-swing': {

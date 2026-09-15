@@ -120,6 +120,10 @@ interface GameState {
   nearStove: boolean;
   /** 瓦斯爐狀態（伺服端同步） */
   stove: { foodId: string; stage: string };
+  /** 本地玩家是否在烤箱互動範圍內 */
+  nearOven: boolean;
+  /** 烤箱狀態（伺服端同步） */
+  oven: { foodId: string; stage: string };
   /** 即時天氣（伺服端每 30 分鐘更新） */
   weather: { code: number; temp: number; isDay: boolean };
   /** 是否套用即時天氣效果（個人設定，存 localStorage，預設開） */
@@ -169,6 +173,8 @@ interface GameState {
   setNearPet: (petId: string | null) => void;
   setNearStove: (near: boolean) => void;
   setStove: (stove: { foodId: string; stage: string }) => void;
+  setNearOven: (near: boolean) => void;
+  setOven: (oven: { foodId: string; stage: string }) => void;
   setWeather: (weather: { code: number; temp: number; isDay: boolean }) => void;
   setWeatherEnabled: (enabled: boolean) => void;
   setSceneTheme: (id: string) => void;
@@ -205,6 +211,8 @@ const initial = {
   nearPetId: null,
   nearStove: false,
   stove: { foodId: '', stage: '' },
+  nearOven: false,
+  oven: { foodId: '', stage: '' },
   weather: { code: -1, temp: 0, isDay: true },
   weatherEnabled: readWeatherEnabled(),
   sceneTheme: readSceneTheme(),
@@ -271,6 +279,8 @@ export const useGame = create<GameState>((set) => ({
   setNearPet: (nearPetId) => set((s) => (s.nearPetId === nearPetId ? s : { nearPetId })),
   setNearStove: (nearStove) => set((s) => (s.nearStove === nearStove ? s : { nearStove })),
   setStove: (stove) => set({ stove }),
+  setNearOven: (nearOven) => set((s) => (s.nearOven === nearOven ? s : { nearOven })),
+  setOven: (oven) => set({ oven }),
   setWeather: (weather) => set({ weather }),
   setCourt: (court) => set({ court }),
   setNearCourtSlot: (nearCourtSlot) => set((s) => (s.nearCourtSlot === nearCourtSlot ? s : { nearCourtSlot })),

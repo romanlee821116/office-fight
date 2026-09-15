@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
 import {
   CAMERA,
+  EAT,
   EMOTE_DURATION_MS,
   FIGHT,
   SPAWN_POINT,
@@ -56,6 +57,8 @@ export const local = {
   dance: null as DanceId | null,
   /** 進行中的運動動作（拿啞鈴彎舉） */
   exercise: null as AnimState | null,
+  /** 進食動作的結束時間（performance.now） */
+  eatUntil: 0,
   /** 格鬥 */
   fightMode: false,
   dead: false,
@@ -78,10 +81,27 @@ export function toggleExercise(anim: AnimState): void {
   local.dance = null;
 }
 
+/**
+ * 開始吃手上的食物；回傳是否真的開始（沒拿食物、倒地、坐著或上一口還沒吃完則否）。
+ * 只負責本地動作狀態，送出訊息由 net/client 的 eatHeldFood 處理。
+ */
+export function startEat(): boolean {
+  if (local.dead || local.seatId || local.knockback) return false;
+  if (!getWeapon(local.weaponId)?.edible) return false;
+  const now = performance.now();
+  if (now < local.eatUntil) return false;
+  local.emote = null;
+  local.dance = null;
+  local.exercise = null;
+  local.eatUntil = now + EAT.durationMs;
+  return true;
+}
+
 /** 本地玩家嘗試攻擊；回傳是否真的送出（冷卻中則否）。冷卻與動畫依手上武器決定 */
 export function canAttack(now: number): boolean {
   if (!local.fightMode || local.dead || local.seatId || local.knockback) return false;
   local.exercise = null;
+  local.eatUntil = 0;
   const weapon = getWeapon(local.weaponId);
   const cooldown = weapon?.cooldownMs ?? FIGHT.cooldownMs;
   if (now - local.lastAttackAt < cooldown) return false;
@@ -131,6 +151,7 @@ export function applyKnockback(toX: number, toZ: number, faceX: number, faceZ: n
   local.rotY = Math.atan2(faceX, faceZ);
   local.emote = null;
   local.dance = null;
+  local.eatUntil = 0;
   local.attackUntil = 0;
 }
 
@@ -198,6 +219,7 @@ export function resetRuntime(): void {
   local.emoteUntil = 0;
   local.dance = null;
   local.exercise = null;
+  local.eatUntil = 0;
   local.fightMode = false;
   local.dead = false;
   local.weaponId = '';

@@ -1,4 +1,4 @@
-import { PLAYER_RADIUS, ROOM_MAX_X, ROOM_MAX_Z, ROOM_MIN_X, ROOM_MIN_Z } from './constants';
+import { PLAYER_RADIUS, WORLD_MAX_X, WORLD_MAX_Z, WORLD_MIN_X, WORLD_MIN_Z } from './constants';
 import { SOLID_FURNITURE } from './data/furniture';
 
 export interface Vec2 {
@@ -11,12 +11,14 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 /**
- * 將圓形玩家（半徑 r）推出所有實體家具的 AABB 與房間邊界。
+ * 將圓形玩家（半徑 r）推出所有實體家具的 AABB 與世界邊界。
+ * 世界外框是 L 形：先夾進 WORLD_* 的外接矩形，多出來的那一角
+ * 由家具表的 play-void 隱形碰撞塊推回去，不必為此改寫夾制邏輯。
  * 純函式，前後端共用；不使用物理引擎。
  */
 export function resolvePosition(x: number, z: number, r: number = PLAYER_RADIUS): Vec2 {
-  x = clamp(x, ROOM_MIN_X + r, ROOM_MAX_X - r);
-  z = clamp(z, ROOM_MIN_Z + r, ROOM_MAX_Z - r);
+  x = clamp(x, WORLD_MIN_X + r, WORLD_MAX_X - r);
+  z = clamp(z, WORLD_MIN_Z + r, WORLD_MAX_Z - r);
 
   for (const f of SOLID_FURNITURE) {
     const minX = f.x - f.w / 2 - r;
@@ -37,8 +39,8 @@ export function resolvePosition(x: number, z: number, r: number = PLAYER_RADIUS)
   }
 
   // 再夾一次：貼牆家具可能把人推到牆外
-  x = clamp(x, ROOM_MIN_X + r, ROOM_MAX_X - r);
-  z = clamp(z, ROOM_MIN_Z + r, ROOM_MAX_Z - r);
+  x = clamp(x, WORLD_MIN_X + r, WORLD_MAX_X - r);
+  z = clamp(z, WORLD_MIN_Z + r, WORLD_MAX_Z - r);
   return { x, z };
 }
 

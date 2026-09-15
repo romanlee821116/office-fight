@@ -19,8 +19,8 @@ function Line({ x, z, w, d }: { x: number; z: number; w: number; d: number }) {
   );
 }
 
-/** 木圍籬（純視覺，世界邊界本身就會擋人） */
-function Fence({ x, z, w, d }: { x: number; z: number; w: number; d: number }) {
+/** 木圍籬（純視覺，世界邊界本身就會擋人）；遊戲區也共用這個樣式 */
+export function Fence({ x, z, w, d }: { x: number; z: number; w: number; d: number }) {
   const posts: [number, number][] = [];
   const along = w > d ? 'x' : 'z';
   const len = Math.max(w, d);
@@ -155,10 +155,10 @@ export function PickleCourt() {
         <meshStandardMaterial color={palette.terrace} />
       </mesh>
 
-      {/* 圍籬：後、右、前三側（與健身房相接的一側是玻璃隔間） */}
+      {/* 圍籬：後、右兩側（與健身房相接的一側是玻璃隔間，正前方通往遊戲區） */}
       <Fence x={TERRACE_CX} z={ROOM_MIN_Z + 0.1} w={TERRACE_W} d={0.06} />
       <Fence x={ROOM_MAX_X - 0.1} z={0} w={0.06} d={ROOM_MAX_Z - ROOM_MIN_Z} />
-      <Fence x={TERRACE_CX} z={ROOM_MAX_Z - 0.1} w={TERRACE_W} d={0.06} />
+      {/* 正前方不設圍籬：那一側整排都是通往兒童遊戲區的入口 */}
 
       {/* 球場：外圈綠色緩衝區 + 藍色場地 + 廚房區淺藍 */}
       <mesh position={[(COURT.minX + COURT.maxX) / 2, 0.014, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>

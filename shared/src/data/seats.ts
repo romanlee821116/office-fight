@@ -1,10 +1,74 @@
 import { resolvePosition, type Vec2 } from '../collision';
-import { SEAT_INTERACT_DISTANCE, SEAT_STAND_OFFSET } from '../constants';
-import type { AnimState, Seat } from '../types';
+import { PLAYGROUND, SEAT_INTERACT_DISTANCE, SEAT_STAND_OFFSET } from '../constants';
+import type { AnimState, FurnitureDef, Seat } from '../types';
 import { FURNITURE } from './furniture';
 
 /** 沙發左右各一個座位的局部 X 偏移 */
 const SOFA_SEAT_OFFSETS = [-0.5, 0.5];
+
+/**
+ * 把設施的局部座標（模型轉正後、以底部中心為原點）換算到世界座標。
+ * 與 three.js 的 rotation.y 同慣例：局部 +Z 會指向世界 (sin rotY, cos rotY)。
+ */
+function toWorld(f: FurnitureDef, dx: number, dz: number): Vec2 {
+  const a = f.rotY ?? 0;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return { x: f.x + dx * c + dz * s, z: f.z - dx * s + dz * c };
+}
+
+/**
+ * 遊戲區設施的座位：位置與朝向都從家具表的中心／rotY 推導，
+ * 局部偏移取自 PLAYGROUND（playground.glb 轉正縮放後量到的實際尺寸）。
+ */
+function playgroundSeats(f: FurnitureDef): Seat[] {
+  const a = f.rotY ?? 0;
+  if (f.id.startsWith('slide-')) {
+    const { ladderZ, exitZ, rideMs } = PLAYGROUND.slide;
+    const at = toWorld(f, 0, ladderZ);
+    // 朝向滑道下滑的方向（局部 +Z），一路爬梯 → 走到滑道口 → 滑下去都沿著這個方向
+    return [
+      {
+        id: f.id,
+        furnitureId: f.id,
+        x: at.x,
+        z: at.z,
+        rotY: a,
+        anim: 'slide',
+        label: '溜滑梯',
+        standAt: toWorld(f, 0, exitZ),
+        rideMs,
+      },
+    ];
+  }
+  if (f.id === 'swing-set') {
+    // 座椅面向局部 +Z，往 ±Z 擺盪；起身點退到架子前方（往 -Z 的空地）
+    return PLAYGROUND.swing.seatX.map((dx, i) => ({
+      id: `${f.id}:${i}`,
+      furnitureId: f.id,
+      x: toWorld(f, dx, 0).x,
+      z: toWorld(f, dx, 0).z,
+      rotY: a,
+      anim: 'swing-ride' as const,
+      label: '盪鞦韆',
+      standAt: toWorld(f, dx, -1.1),
+    }));
+  }
+  if (f.id === 'seesaw') {
+    // 兩人面對面坐在板子兩端（局部 ±X），起身時往同一側（局部 +Z）讓開
+    return PLAYGROUND.seesaw.seatX.map((dx, i) => ({
+      id: `${f.id}:${i}`,
+      furnitureId: f.id,
+      x: toWorld(f, dx, 0).x,
+      z: toWorld(f, dx, 0).z,
+      rotY: dx < 0 ? a + Math.PI / 2 : a - Math.PI / 2,
+      anim: i === 0 ? ('seesaw-a' as AnimState) : ('seesaw-b' as AnimState),
+      label: '玩蹺蹺板',
+      standAt: toWorld(f, dx, 1.05),
+    }));
+  }
+  return [];
+}
 
 function seatAt(furnitureId: string, suffix: string, x: number, z: number, rotY: number, anim: AnimState = 'sit', label = '坐下'): Seat {
   return { id: suffix ? `${furnitureId}:${suffix}` : furnitureId, furnitureId, x, z, rotY, anim, label };
@@ -28,6 +92,7 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   if (f.id === 'smith-machine') return [seatAt(f.id, '', f.x - 0.4, f.z, Math.PI / 2, 'benchpress-incline', '臥推')];
   // 深蹲架：站到橫桿下深蹲
   if (f.id === 'squat-rack') return [seatAt(f.id, '', f.x, f.z - 0.15, Math.PI, 'squat', '深蹲')];
+  if (f.type === 'playground') return playgroundSeats(f);
   return [];
 });
 
@@ -71,6 +136,8 @@ function isClear(x: number, z: number): boolean {
 }
 
 export function standPointForSeat(seat: Seat): Vec2 {
+  // 遊樂設施指定了起身點（滑道盡頭、蹺蹺板側邊），直接用它解算碰撞
+  if (seat.standAt) return resolvePosition(seat.standAt.x, seat.standAt.z);
   const fx = Math.sin(seat.rotY);
   const fz = Math.cos(seat.rotY);
   const dirs: Vec2[] = [

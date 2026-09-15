@@ -1,4 +1,16 @@
-import { GYM_WALL_X, ROOM_MAX_Z, ROOM_MIN_Z, TERRACE_WALL_X } from '../constants';
+import {
+  GYM_WALL_X,
+  OVEN,
+  PLAYGROUND,
+  PLAY_MAX_Z,
+  PLAY_MIN_X,
+  PLAY_MIN_Z,
+  ROOM_MAX_Z,
+  ROOM_MIN_X,
+  ROOM_MIN_Z,
+  TERRACE_WALL_X,
+  WALL_HEIGHT,
+} from '../constants';
 import type { FurnitureDef } from '../types';
 
 /**
@@ -76,6 +88,8 @@ export const FURNITURE: FurnitureDef[] = [
 
   // 小廚房茶水間（左前角）：左牆料理檯（面向 +X）、前排咖啡吧（面向 -Z）、中間早餐吧檯與高腳椅
   // rotY 只影響外觀，碰撞 w/d 已依世界座標軸換算
+  // 烤箱：位置與 constants.ts 的 OVEN 一致（拿著可頌按 F 放進去烤）
+  { id: 'oven', type: 'prop', variant: 'oven', x: OVEN.x, z: OVEN.z, w: 0.9, d: 0.86, h: 0.9, color: '#E9E4DE', rotY: Math.PI / 2 },
   { id: 'fridge', type: 'fridge', x: -11.5, z: 2.45, w: 0.85, d: 1.05, h: 1.84, color: '#DCE3EA', rotY: Math.PI / 2 },
   { id: 'kitchen-run', type: 'counter', x: -11.52, z: 4.84, w: 0.9, d: 3.44, h: 0.9, color: '#E9E4DE', rotY: Math.PI / 2 },
   { id: 'kitchen-upper-0', type: 'prop', variant: 'kitchen-upper', x: -11.76, y: 1.45, z: 4.45, w: 0.45, d: 0.86, h: 0.78, color: '#E9E4DE', rotY: Math.PI / 2, solid: false },
@@ -166,6 +180,59 @@ const terrace: FurnitureDef[] = [
   { id: 'plant-terrace-0', type: 'plant', x: 23.8, z: -7.4, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
   { id: 'plant-terrace-1', type: 'plant', x: 40.3, z: 7.3, w: 0.5, d: 0.5, h: 1.3, color: '#5E8C61' },
 ];
+/**
+ * 兒童遊戲區（露台正前方 z 8~20）。設施外觀由前端從 playground.glb 取出對應零件繪製，
+ * 這裡只負責碰撞盒與「設施中心 / 朝向」這個唯一真實來源——座位表也是從這裡推導出來的。
+ *
+ * rotY 的意義：溜滑梯為滑道下滑的方向（局部 +Z），鞦韆為座椅面向的方向，
+ * 蹺蹺板為板身垂直的方向（板身沿局部 X）。
+ */
+const SLIDE = PLAYGROUND.slide;
+const playground: FurnitureDef[] = [
+  // 世界外框是 L 形：遊戲區只佔露台那一段 X，左半邊這一大塊不是場地，用隱形碰撞塊擋住
+  {
+    id: 'play-void',
+    type: 'playground',
+    x: (ROOM_MIN_X + PLAY_MIN_X) / 2,
+    z: (PLAY_MIN_Z + PLAY_MAX_Z) / 2,
+    w: PLAY_MIN_X - ROOM_MIN_X,
+    d: PLAY_MAX_Z - PLAY_MIN_Z,
+    h: WALL_HEIGHT,
+  },
+
+  // 兩組溜滑梯分立左右，爬梯朝外牆、滑道都朝場地中央（rotY = ±π/2 故 w/d 互換）
+  { id: 'slide-a', type: 'playground', x: 26.2, z: 16.5, w: SLIDE.depth, d: SLIDE.width, h: 1.7, rotY: Math.PI / 2 },
+  { id: 'slide-b', type: 'playground', x: 37.8, z: 16.5, w: SLIDE.depth, d: SLIDE.width, h: 1.7, rotY: -Math.PI / 2 },
+
+  // 盪鞦韆：橫梁沿 X，兩個座位往 ±Z 擺盪（後方留 2m 讓鞦韆盪得開）
+  {
+    id: 'swing-set',
+    type: 'playground',
+    x: 32,
+    z: 17.8,
+    w: PLAYGROUND.swing.width,
+    d: PLAYGROUND.swing.depth,
+    h: PLAYGROUND.swing.height,
+  },
+
+  // 蹺蹺板：板身沿 X，兩端各一個座位
+  { id: 'seesaw', type: 'playground', x: 36.5, z: 11.5, w: PLAYGROUND.seesaw.width, d: PLAYGROUND.seesaw.depth, h: 1.1 },
+
+  // 水池與沙坑（不能坐，水池擋路、沙坑可以走過去）
+  { id: 'pond', type: 'playground', x: 26.5, z: 11.8, w: PLAYGROUND.pond.width, d: PLAYGROUND.pond.depth, h: 0.35 },
+  {
+    id: 'sandbox',
+    type: 'playground',
+    x: 32,
+    z: 11.5,
+    w: PLAYGROUND.sandbox.width,
+    d: PLAYGROUND.sandbox.depth,
+    h: 0.25,
+    solid: false,
+  },
+];
+FURNITURE.push(...playground);
+
 FURNITURE.push(...terrace);
 
 FURNITURE.push(...gym);

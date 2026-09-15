@@ -1,16 +1,16 @@
-import { ROOM_CENTER_X, ROOM_MAX_X, ROOM_MAX_Z, ROOM_MIN_X, ROOM_MIN_Z, SPAWN_POINT } from '@office/shared';
+import { ROOM_CENTER_X, WORLD_MAX_X, WORLD_MAX_Z, WORLD_MIN_X, WORLD_MIN_Z, SPAWN_POINT } from '@office/shared';
 import type { PropGroup, PropInstance } from './types';
 
 /** 島外地面高度：與浮島地台底部齊平（地台中心 -0.32、厚 0.6） */
 export const GROUND_Y = -0.62;
 
-/** 浮島外圍留白：此範圍內不放任何背景物件 */
+/** 浮島外圍留白：此範圍內不放任何背景物件（以含遊戲區的世界外框為準） */
 const PAD = 6;
 export const KEEPOUT = {
-  minX: ROOM_MIN_X - PAD,
-  maxX: ROOM_MAX_X + PAD,
-  minZ: ROOM_MIN_Z - PAD,
-  maxZ: ROOM_MAX_Z + PAD,
+  minX: WORLD_MIN_X - PAD,
+  maxX: WORLD_MAX_X + PAD,
+  minZ: WORLD_MIN_Z - PAD,
+  maxZ: WORLD_MAX_Z + PAD,
 };
 
 /**

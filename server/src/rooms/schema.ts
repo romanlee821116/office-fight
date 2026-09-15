@@ -47,6 +47,10 @@ export class OfficeState extends Schema {
   @type('string') stoveFoodId: string = '';
   /** '' | 'cooking' | 'burning' */
   @type('string') stoveStage: string = '';
+  /** 烤箱裡的食物（weapon id，空字串 = 沒有）；烤好後會換成烤過的版本 */
+  @type('string') ovenFoodId: string = '';
+  /** '' | 'baking' | 'done' */
+  @type('string') ovenStage: string = '';
   /** 匹克球：idle | waiting | countdown | rally | between | over */
   @type('string') courtStatus: string = 'idle';
   @type('string') courtPlayerA: string = '';

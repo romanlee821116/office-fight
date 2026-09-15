@@ -9,6 +9,8 @@ import { LocalPlayer } from './LocalPlayer';
 import { Office } from './Office';
 import { Pets } from './Pets';
 import { PickleCourt } from './PickleCourt';
+import { Playground } from './Playground';
+import { Oven } from './Oven';
 import { Stove } from './Stove';
 import { Pickups } from './Pickups';
 import { Projectiles } from './Projectiles';
@@ -46,12 +48,14 @@ export function Scene() {
         <Backdrop />
         <Office />
         <PickleCourt />
+        <Playground />
       </SceneThemeProvider>
       <ContactShadows position={[0, 0.01, 0]} opacity={0.25} scale={40} blur={2} far={4} resolution={512} frames={1} />
       <LocalPlayer />
       <RemotePlayers />
       <Pets />
       <Stove />
+      <Oven />
       <Pickups />
       <Projectiles />
       <BloodParticles />

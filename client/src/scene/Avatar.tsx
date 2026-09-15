@@ -4,11 +4,10 @@ import { useFrame } from '@react-three/fiber';
 import { LoopOnce, LoopRepeat, Mesh, MeshBasicMaterial, MeshStandardMaterial, type Group, type Material, type Object3D } from 'three';
 import { AVATARS, DANCES, type AnimState, type AvatarDef } from '@office/shared';
 import { AvatarPrimitive } from './AvatarPrimitive';
-import { ONE_SHOT_PROCEDURAL, PROCEDURAL_BPM, dancePose, isProcedural, swingPose, type DancePose } from './dances';
+import { CHARACTER_SCALE, ONE_SHOT_PROCEDURAL, PROCEDURAL_BPM, dancePose, isProcedural, oneShotPose, type DancePose } from './dances';
 import { HeldWeapon } from './HeldWeapon';
 
-/** Kenney Blocky Characters 高 2.7 單位，縮放後約 1.75m */
-export const CHARACTER_SCALE = 0.65;
+export { CHARACTER_SCALE };
 /** Kenney 模型原始即面向 +Z，與場景慣例一致；若替換其他套件的模型可在此校正 */
 const FACING_FIX = 0;
 const FADE_SEC = 0.15;
@@ -23,6 +22,10 @@ const CLIP_BY_ANIM: Partial<Record<AnimState, string>> = {
   wave: 'interact-right',
   attack: 'attack-melee-right',
   swing: 'idle', // 實際由程式動作接管
+  slide: 'idle',
+  'swing-ride': 'idle',
+  'seesaw-a': 'idle',
+  'seesaw-b': 'idle',
   throw: 'holding-right-shoot',
   hit: 'pick-up',
   dead: 'die',
@@ -216,7 +219,7 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: Av
           oneShotStart.current = now;
         }
         const t = Math.min(1, (now - oneShotStart.current) / oneShotMs);
-        applyPose(swingPose(t));
+        applyPose(oneShotPose(anim, t));
         return;
       }
       oneShotAnim.current = null;
