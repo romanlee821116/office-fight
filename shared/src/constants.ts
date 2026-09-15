@@ -1,3 +1,5 @@
+import type { NpcHazard } from './types';
+
 /**
  * 房間邊界（公尺）。原本 24 x 16 的辦公室以原點為中心（x -12～12），
  * 右側再擴建 8m 作為健身房（x 12～20），因此 X 方向不對稱。
@@ -168,10 +170,54 @@ export const NPC = {
   speakGapMs: [3000, 7000] as [number, number],
   /** 說話時揮手的動作長度 */
   speakAnimMs: 1200,
+  /** 走近多少距離可以抓住他拖走 */
+  pickupRange: 1.6,
+  /** 被拖著時，頭離拖的人多遠（人躺在他身後） */
+  dragDist: 0.75,
+  /** 被拖著時上半身被提起來的角度（rad，0 = 完全躺平、π/2 = 站著） */
+  dragPitch: 1.25,
+  /** 角色模型的頭頂高度，用來把頭對準爐面／水面 */
+  headY: 1.7,
+  /** 被押住時整個人被倒提過來的前傾角（rad，超過 90° 就是頭朝下） */
+  pinPitch: 2.6,
+  /** 押在火裡／水裡時每次結算的傷害與間隔（1000 血約撐 8 秒） */
+  pinDamage: 60,
+  hazardTickMs: 500,
+  /** 掙扎抖動的幅度與週期 */
+  struggleAmp: 0.06,
+  struggleMs: 130,
+  /** 放開後的僵直（爬起來喘一下） */
+  releaseStaggerMs: 1200,
+};
+
+/** 站在 (x, z) 時最近的可用危險區；都搆不到就是 null */
+export function findNpcHazard(x: number, z: number): NpcHazard | null {
+  let best: NpcHazard | null = null;
+  let bestDist = Infinity;
+  for (const key of Object.keys(NPC_HAZARDS) as NpcHazard[]) {
+    const h = NPC_HAZARDS[key];
+    const dist = Math.hypot(h.x - x, h.z - z);
+    if (dist > h.range || dist >= bestDist) continue;
+    best = key;
+    bestDist = dist;
+  }
+  return best;
+}
+
+/** 被按在爐火上時的求饒台詞 */
+export const NPC_FIRE_LINES = ['好燙好燙好燙', '我支持你，但這樣我會熟', '我不支持這個！', '我支持放開我'];
+
+/** 被壓進水裡時的求饒台詞（嘴巴在水裡，講不清楚） */
+export const NPC_WATER_LINES = ['咕嚕咕嚕咕嚕...', '我支持你，但我不會游泳', '我不支持這個！咕嚕', '我支持放開我…咕嚕'];
+
+/** 依危險區挑一份求饒台詞 */
+export const NPC_PIN_LINES: Record<NpcHazard, readonly string[]> = {
+  stove: NPC_FIRE_LINES,
+  pond: NPC_WATER_LINES,
 };
 
 /** 路人的台詞，每次隨機挑一句（不會連說同一句） */
-export const NPC_LINES = ['我支持你們，但JOE說不行', '我支持你們的支持', '我支持你說話', '我支持你們，但我真沒錢'];
+export const NPC_LINES = ['我支持你們，但JOE說不行', '我支持你們的支持', '我支持你說話', '我支持你們，但我真沒錢', '那從公司的角度有什麼更好的做法嗎？'];
 
 /**
  * 廚房瓦斯爐：拿著食物按 E 放上去煎，放太久會燒起來。
@@ -195,6 +241,14 @@ export const STOVE = {
   burnTickMs: 500,
   /** 離開火源後頭上的火多久熄滅 */
   fireLingerMs: 2000,
+  /**
+   * 常駐爐火：沒放食物時爐口也一直燒著，所以隨時可以把人押上去烤。
+   * 半徑刻意小於「玩家能站到的最近距離」——流理台 AABB 的邊在 x -11.07，
+   * 加上 PLAYER_RADIUS 0.35 後最近只能站到 0.8m——站在爐前煮東西不會被燙，
+   * 但被壓在爐面上（距離 0）的人一定燒起來。
+   */
+  pilotRadius: 0.7,
+  pilotDamage: 3,
 };
 
 /**
@@ -341,6 +395,34 @@ export const PLAYGROUND = {
   pond: { width: 3.22, depth: 2.55 },
   /** 沙坑（純裝飾，可以走過去） */
   sandbox: { width: 1.64, depth: 1.63 },
+};
+
+/**
+ * 兒童遊戲區的水池：平常只是擋路的景，但可以把路人押進去溺水。
+ * 座標與 furniture.ts 的 pond 家具共用這一份。
+ */
+export const POND = {
+  x: 26.5,
+  z: 11.8,
+  /**
+   * 站在池邊多近可以把人壓進水裡。水池半寬 1.61 + PLAYER_RADIUS 0.35 = 1.96，
+   * 也就是從左右兩側最近只能站到 1.96m，所以門檻要大於 2。
+   */
+  pinRange: 2.6,
+  /** 頭被壓進水裡的高度（水面約在 0.3，壓到這個高度就整顆沒入） */
+  headY: 0.12,
+};
+
+/**
+ * 可以把路人押進去的危險區：押下去的落點，以及玩家要站多近才押得到。
+ * 前後端共用這一份，判定距離才不會兩邊走偏。
+ */
+export const NPC_HAZARDS: Record<
+  NpcHazard,
+  { x: number; z: number; range: number; label: string; action: string; headY: number }
+> = {
+  stove: { x: STOVE.x, z: STOVE.z, range: STOVE.range, label: '瓦斯爐', action: '按在爐火上', headY: STOVE.topY },
+  pond: { x: POND.x, z: POND.z, range: POND.pinRange, label: '水池', action: '壓進水裡', headY: POND.headY },
 };
 
 /** 決鬥 */

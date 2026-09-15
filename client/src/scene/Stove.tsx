@@ -18,7 +18,12 @@ export function Stove() {
           </group>
         </Suspense>
       )}
-      {stove.stage === 'burning' && <FireFX position={[0, STOVE.topY, 0]} scale={1.1} />}
+      {/* 爐口常駐小火：沒東西燒也看得到有火，被押上來的人就是燒在這裡 */}
+      {stove.stage === 'burning' ? (
+        <FireFX position={[0, STOVE.topY, 0]} scale={1.1} />
+      ) : (
+        <FireFX position={[0, STOVE.topY - 0.08, 0]} scale={0.3} rate={14} light={false} />
+      )}
     </group>
   );
 }

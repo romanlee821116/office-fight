@@ -14,6 +14,7 @@ import {
   type HitEvent,
   type IdleEvent,
   type JoinOptions,
+  type NpcPinPayload,
   type NpcState,
   type PetFlightEvent,
   type PetState,
@@ -314,7 +315,9 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     npcTarget.z = npc.z;
     npcTarget.rotY = npc.rotY;
     npcTarget.anim = npc.anim;
-    useGame.getState().setNpc({ hp: npc.hp, anim: npc.anim });
+    npcTarget.carrierId = npc.carrierId;
+    npcTarget.pinnedAt = npc.pinnedAt;
+    useGame.getState().setNpc({ hp: npc.hp, anim: npc.anim, carrierId: npc.carrierId, pinnedAt: npc.pinnedAt, onFire: npc.onFire });
   };
   $(r.state).listen('npc', (npc) => {
     if (!npc) return;
@@ -597,6 +600,20 @@ export function sendOvenTake(): void {
 export function eatHeldFood(): void {
   if (!startEat()) return;
   setTimeout(() => room?.send(Messages.eat), EAT.sendDelayMs);
+}
+
+export function sendNpcPickup(): void {
+  room?.send(Messages.npcPickup);
+}
+
+export function sendNpcDrop(): void {
+  room?.send(Messages.npcDrop);
+}
+
+/** 按住／放開「把路人押進危險區」；on=false 一定要送，不然他會被按到死 */
+export function sendNpcPin(on: boolean): void {
+  const payload: NpcPinPayload = { on };
+  room?.send(Messages.npcPin, payload);
 }
 
 export function sendPetPickup(petId: string): void {

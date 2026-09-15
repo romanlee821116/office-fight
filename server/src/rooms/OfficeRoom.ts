@@ -6,7 +6,9 @@ import {
   FIGHT,
   IDLE,
   NPC,
+  NPC_HAZARDS,
   NPC_LINES,
+  NPC_PIN_LINES,
   PET,
   PETS,
   PET_EAT_MS,
@@ -15,6 +17,7 @@ import {
   OVEN,
   STOVE,
   WEATHER,
+  findNpcHazard,
   getPet,
   petSizeFactor,
   DUMBBELL_RACK_SLOTS,
@@ -49,6 +52,8 @@ import {
   type HitEvent,
   type IdleEvent,
   type JoinOptions,
+  type NpcHazard,
+  type NpcPinPayload,
   type MovePayload,
   type PetFlightEvent,
   type PickupPayload,
@@ -166,6 +171,8 @@ export class OfficeRoom extends Room<OfficeState> {
   private petAi = new Map<string, PetAi>();
   private npcDebug = process.env.NPC_DEBUG === '1';
   private npcAi: NpcAi = { mode: 'idle', until: 0, tx: 0, tz: 0, staggerUntil: 0, nextSpeakAt: 0, speakUntil: 0, lastLine: -1 };
+  /** 路人最後一次被火燒到的時間，用來讓身上的火慢慢熄掉 */
+  private npcLastBurnAt = 0;
   private stoveBurnTimer: { clear(): void } | null = null;
   /** 匹克球：進行中那一拍的資訊（落地判定用） */
   private courtShot: {
@@ -220,6 +227,9 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<{ petId: string }>(Messages.petPickup, (client, payload) => this.handlePetPickup(client, payload));
     this.onPlayerMessage(Messages.petDrop, (client) => this.handlePetDrop(client));
     this.onPlayerMessage(Messages.petThrow, (client) => this.handlePetThrow(client));
+    this.onPlayerMessage(Messages.npcPickup, (client) => this.handleNpcPickup(client));
+    this.onPlayerMessage(Messages.npcDrop, (client) => this.handleNpcDrop(client));
+    this.onPlayerMessage<NpcPinPayload>(Messages.npcPin, (client, payload) => this.handleNpcPin(client, payload));
     this.onPlayerMessage<{ petId: string }>(Messages.feedPet, (client, payload) => this.handleFeedPet(client, payload));
     this.onPlayerMessage(Messages.stovePlace, (client) => this.handleStovePlace(client));
     this.onPlayerMessage(Messages.stoveTake, (client) => this.handleStoveTake(client));
@@ -243,6 +253,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.clock.setInterval(() => this.tickPets(), PET.aiTickMs);
     this.placeNpc();
     this.clock.setInterval(() => this.tickNpc(), NPC.aiTickMs);
+    this.clock.setInterval(() => this.tickNpcHazard(), NPC.hazardTickMs);
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
 
     void this.refreshWeather();
@@ -381,6 +392,7 @@ export class OfficeRoom extends Room<OfficeState> {
     }
     this.dropWeapon(player);
     this.dropCarriedPet(player.id);
+    this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
     this.state.players.delete(client.sessionId);
     this.meta.delete(client.sessionId);
@@ -435,6 +447,8 @@ export class OfficeRoom extends Room<OfficeState> {
     }
 
     this.dropCarriedPet(player.id);
+
+    this.releaseNpc(player.id);
     player.seatId = seat.id;
     player.x = seat.x;
     player.z = seat.z;
@@ -581,7 +595,7 @@ export class OfficeRoom extends Room<OfficeState> {
     let npcHit = false;
     if (!target && !petTarget && !attacker.duelWith) {
       const npc = this.state.npc;
-      if (npc.anim !== 'dead') {
+      if (npc.anim !== 'dead' && !npc.carrierId) {
         const dx = npc.x - attacker.x;
         const dz = npc.z - attacker.z;
         const along = dx * fx + dz * fz;
@@ -677,6 +691,7 @@ export class OfficeRoom extends Room<OfficeState> {
       target.anim = 'dead';
       this.dropWeapon(target);
       this.dropCarriedPet(target.id);
+      this.releaseNpc(target.id);
       if (attacker.duelWith === target.id) this.endDuel(attacker, target, 'ko');
       else this.broadcastSystem(`${attacker.name} 用${weapon.name}擊倒了 ${target.name}`);
       const targetId = target.id;
@@ -826,6 +841,7 @@ export class OfficeRoom extends Room<OfficeState> {
   private startDuel(a: Player, b: Player): void {
     for (const p of [a, b]) {
       this.dropCarriedPet(p.id);
+      this.releaseNpc(p.id);
       p.duelWith = p === a ? b.id : a.id;
       p.fightMode = true;
       p.hp = FIGHT.maxHp;
@@ -1038,6 +1054,9 @@ export class OfficeRoom extends Room<OfficeState> {
     npc.rotY = Math.random() * Math.PI * 2;
     npc.anim = 'idle';
     npc.hp = NPC.maxHp;
+    npc.carrierId = '';
+    npc.pinnedAt = '';
+    npc.onFire = false;
     const now = Date.now();
     this.npcAi = {
       mode: 'idle',
@@ -1073,12 +1092,12 @@ export class OfficeRoom extends Room<OfficeState> {
   }
 
   /** 隨機挑一句台詞，不會跟上一句重複 */
-  private nextNpcLine(): string {
+  private nextNpcLine(lines: readonly string[] = NPC_LINES): string {
     const ai = this.npcAi;
-    let i = Math.floor(Math.random() * NPC_LINES.length);
-    if (NPC_LINES.length > 1 && i === ai.lastLine) i = (i + 1) % NPC_LINES.length;
+    let i = Math.floor(Math.random() * lines.length);
+    if (lines.length > 1 && i === ai.lastLine) i = (i + 1) % lines.length;
     ai.lastLine = i;
-    return NPC_LINES[i];
+    return lines[i];
   }
 
   /** 路人 AI：走動 → 停頓，旁邊有人時轉過去講一句。他不會攻擊任何人 */
@@ -1089,6 +1108,38 @@ export class OfficeRoom extends Room<OfficeState> {
 
     if (this.npcDebug && now % 1000 < NPC.aiTickMs) logger.info(`[npc] anim=${npc.anim} mode=${ai.mode} until=${ai.until - now} speak=${ai.nextSpeakAt - now} pos=${npc.x.toFixed(1)},${npc.z.toFixed(1)}`);
     if (npc.anim === 'dead') return; // 躺著等 placeNpc 把他扶起來
+
+    // 被拖著：位置完全交給拖的人，AI 停擺
+    if (npc.carrierId) {
+      const carrier = this.state.players.get(npc.carrierId);
+      if (!carrier || carrier.hp <= 0 || carrier.seatId) {
+        this.releaseNpc(npc.carrierId);
+        return;
+      }
+      // 被押在危險區：釘在爐面／水面上掙扎，拖的人走開就自然脫手
+      const hazard = npc.pinnedAt ? NPC_HAZARDS[npc.pinnedAt as NpcHazard] : undefined;
+      if (hazard && Math.hypot(carrier.x - hazard.x, carrier.z - hazard.z) <= hazard.range) {
+        // 站位釘在危險區，背對拖的人：前端才好把他倒提過來、頭壓進 hazard.headY
+        npc.x = hazard.x;
+        npc.z = hazard.z;
+        npc.rotY = Math.atan2(hazard.x - carrier.x, hazard.z - carrier.z);
+        npc.anim = 'hit';
+        return;
+      }
+      npc.pinnedAt = '';
+      // 拖著走：人躺在拖的人正後方，頭朝著他
+      const back = resolvePosition(
+        carrier.x - Math.sin(carrier.rotY) * NPC.dragDist,
+        carrier.z - Math.cos(carrier.rotY) * NPC.dragDist,
+        NPC.radius,
+      );
+      npc.x = back.x;
+      npc.z = back.z;
+      npc.rotY = carrier.rotY;
+      npc.anim = 'idle';
+      return;
+    }
+
     if (now < ai.staggerUntil) return;
     if (npc.anim === 'hit') npc.anim = 'idle'; // 僵直結束
 
@@ -1150,7 +1201,7 @@ export class OfficeRoom extends Room<OfficeState> {
   private findNpcTarget(attacker: Player, fx: number, fz: number, range: number): Npc | null {
     if (attacker.duelWith) return null;
     const npc = this.state.npc;
-    if (npc.anim === 'dead') return null;
+    if (npc.anim === 'dead' || npc.carrierId) return null;
     const dx = npc.x - attacker.x;
     const dz = npc.z - attacker.z;
     const dist = Math.hypot(dx, dz);
@@ -1169,14 +1220,11 @@ export class OfficeRoom extends Room<OfficeState> {
     npc.x = to.x;
     npc.z = to.z;
     npc.rotY = Math.atan2(-dirX, -dirZ); // 面向攻擊者
-    npc.hp = Math.max(0, npc.hp - weapon.damage);
 
-    const killed = npc.hp === 0;
+    const killed = this.damageNpc(weapon.damage);
     if (killed) {
-      npc.anim = 'dead';
       this.broadcastSystem(`🚶 ${attacker.name} 用${weapon.name}打倒了${NPC.name}…他等一下就會爬起來`);
       logger.info(`路人被打倒 by ${attacker.name}`);
-      this.clock.setTimeout(() => this.placeNpc(), NPC.respawnMs);
     } else {
       npc.anim = 'hit';
       this.npcAi.staggerUntil = now + NPC.staggerMs;
@@ -1202,6 +1250,130 @@ export class OfficeRoom extends Room<OfficeState> {
     this.broadcast(Messages.hit, event);
   }
 
+  /** 扣路人的血；回傳他是否被打倒。倒下後排程 placeNpc 把他扶起來 */
+  private damageNpc(amount: number): boolean {
+    const npc = this.state.npc;
+    npc.hp = Math.max(0, npc.hp - amount);
+    if (npc.hp > 0) return false;
+    npc.anim = 'dead';
+    npc.onFire = false;
+    if (npc.carrierId) this.releaseNpc(npc.carrierId);
+    npc.pinnedAt = '';
+    this.clock.setTimeout(() => this.placeNpc(), NPC.respawnMs);
+    return true;
+  }
+
+  /** 走近抓住路人拖著走（被拖的時候他不會被打，也不會自己走） */
+  private handleNpcPickup(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || player.seatId || player.duelWith || this.courtSideOf(player.id)) return;
+    if (this.carriedPetOf(player.id)) return; // 手上抱著寵物就騰不出手
+    const npc = this.state.npc;
+    if (npc.carrierId || npc.anim === 'dead') return;
+    if (Math.hypot(npc.x - player.x, npc.z - player.z) > NPC.pickupRange + 0.6) return;
+
+    npc.carrierId = player.id;
+    npc.pinnedAt = '';
+    npc.anim = 'idle';
+    this.npcAi.mode = 'idle';
+    this.npcAi.speakUntil = 0;
+    this.broadcastSystem(`🚶 ${player.name} 抓著${NPC.name}拖著走`);
+    this.broadcast(Messages.npcSay, { text: '欸欸欸你要拖我去哪' });
+  }
+
+  private handleNpcDrop(client: Client): void {
+    if (this.state.npc.carrierId !== client.sessionId) return;
+    this.releaseNpc(client.sessionId);
+  }
+
+  /**
+   * 按住把拖著的路人的頭壓進旁邊的危險區，放開就收手。
+   * 押著期間由 tickNpcHazard 每 NPC.hazardTickMs 結算一次傷害。
+   */
+  private handleNpcPin(client: Client, payload: NpcPinPayload): void {
+    const npc = this.state.npc;
+    if (npc.carrierId !== client.sessionId) return;
+    if (!payload?.on) {
+      npc.pinnedAt = '';
+      return;
+    }
+    const player = this.state.players.get(client.sessionId);
+    if (!player || player.hp <= 0 || npc.anim === 'dead' || npc.pinnedAt) return;
+    const hazard = findNpcHazard(player.x, player.z);
+    if (!hazard) return;
+    npc.pinnedAt = hazard;
+    this.npcAi.nextSpeakAt = 0; // 馬上開始求饒
+    this.broadcastSystem(`🚶 ${player.name} 把${NPC.name}的頭${NPC_HAZARDS[hazard].action}！`);
+  }
+
+  /** 放開拖著的路人：他本來就躺在後面，放手就留在原地爬起來 */
+  private releaseNpc(playerId: string): void {
+    const npc = this.state.npc;
+    if (npc.carrierId !== playerId) return;
+    const pos = resolvePosition(npc.x, npc.z, NPC.radius);
+    npc.carrierId = '';
+    npc.pinnedAt = '';
+    npc.x = pos.x;
+    npc.z = pos.z;
+    if (npc.anim === 'dead') return;
+
+    npc.anim = 'hit'; // 落地喘一下
+    const now = Date.now();
+    this.npcAi.mode = 'idle';
+    this.npcAi.staggerUntil = now + NPC.releaseStaggerMs;
+    this.npcAi.until = now + NPC.releaseStaggerMs;
+    this.npcAi.speakUntil = 0;
+    this.npcAi.nextSpeakAt = now + NPC.releaseStaggerMs + randIn(NPC.speakGapMs);
+  }
+
+  /**
+   * 路人的持續傷害：被押在爐上／水裡時扣 NPC.pinDamage，
+   * 沒被押著時一樣會被爐火波及（燒焦時範圍大，平常只有爐口那一小圈）。
+   */
+  private tickNpcHazard(): void {
+    const npc = this.state.npc;
+    if (npc.anim === 'dead') return;
+    const now = Date.now();
+
+    let damage = 0;
+    let fire = false;
+    if (npc.pinnedAt === 'pond') {
+      damage = NPC.pinDamage;
+    } else if (npc.pinnedAt === 'stove') {
+      damage = NPC.pinDamage;
+      fire = true;
+    } else {
+      const burning = this.state.stoveStage === 'burning';
+      const radius = burning ? STOVE.burnRadius : STOVE.pilotRadius;
+      if (Math.hypot(npc.x - STOVE.x, npc.z - STOVE.z) <= radius) {
+        damage = burning ? STOVE.burnDamage : STOVE.pilotDamage;
+        fire = true;
+      }
+    }
+
+    if (fire) {
+      npc.onFire = true;
+      this.npcLastBurnAt = now;
+    } else if (npc.onFire && now - this.npcLastBurnAt > STOVE.fireLingerMs) {
+      npc.onFire = false;
+    }
+    if (damage <= 0) return;
+
+    // 被押著的時候一路求饒到倒下：燙的跟嗆水的不是同一組台詞
+    if (npc.pinnedAt && now >= this.npcAi.nextSpeakAt) {
+      this.npcAi.nextSpeakAt = now + randIn(NPC.speakGapMs);
+      this.broadcast(Messages.npcSay, { text: this.nextNpcLine(NPC_PIN_LINES[npc.pinnedAt as NpcHazard]) });
+    }
+
+    const carrierName = this.state.players.get(npc.carrierId)?.name;
+    const cause = npc.pinnedAt === 'pond' ? '淹死' : '烤焦';
+    if (!this.damageNpc(damage)) return;
+    this.broadcastSystem(
+      carrierName ? `🚶 ${carrierName} 把${NPC.name}${cause}了…他等一下就會爬起來` : `🚶 ${NPC.name}被${cause}了…他等一下就會爬起來`,
+    );
+    logger.info(`路人${cause} by ${carrierName ?? '爐火'}`);
+  }
+
   /** 玩家抱著的寵物（一次最多一隻） */
   private carriedPetOf(playerId: string): Pet | null {
     for (const pet of this.state.pets.values()) if (pet.carrierId === playerId) return pet;
@@ -1212,6 +1384,7 @@ export class OfficeRoom extends Room<OfficeState> {
     const player = this.state.players.get(client.sessionId);
     if (!player || player.hp <= 0 || player.seatId || player.duelWith || this.courtSideOf(player.id)) return;
     if (this.carriedPetOf(player.id)) return;
+    if (this.state.npc.carrierId === player.id) return; // 拖著路人時抱不了寵物
     const pet = this.state.pets.get(payload?.petId ?? '');
     if (!pet || pet.carrierId || pet.anim === 'dead' || pet.anim === 'thrown') return;
     if (Math.hypot(pet.x - player.x, pet.z - player.z) > PET.pickupRange + 0.6) return;
@@ -1457,6 +1630,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.anim = 'dead';
     this.dropWeapon(player);
     this.dropCarriedPet(player.id);
+    this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
     if (player.duelWith) {
       const opponent = this.state.players.get(player.duelWith);
@@ -1645,6 +1819,8 @@ export class OfficeRoom extends Room<OfficeState> {
     if (Math.hypot(player.x - slot.x, player.z - slot.z) > COURT.joinRange + 0.6) return;
 
     this.dropCarriedPet(player.id);
+
+    this.releaseNpc(player.id);
     this.dropWeapon(player);
     player.weaponId = 'paddle';
     player.ammo = 0;

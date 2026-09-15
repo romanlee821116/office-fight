@@ -1,10 +1,13 @@
-import { DANCES, EMOTES, SEAT_BY_ID, getPet, getWeapon } from '@office/shared';
+import { DANCES, EMOTES, NPC, NPC_HAZARDS, SEAT_BY_ID, getPet, getWeapon } from '@office/shared';
 import {
   eatHeldFood,
   sendAttack,
   sendCourtJoin,
   sendDrop,
   sendFeedPet,
+  sendNpcDrop,
+  sendNpcPickup,
+  sendNpcPin,
   sendOvenPlace,
   sendOvenTake,
   sendPetDrop,
@@ -25,7 +28,10 @@ interface Action {
   /** 按鍵提示文字，同時作為 React key 的一部分 */
   hint: string;
   label: string;
-  onClick: () => void;
+  onClick?: () => void;
+  /** 按住型互動：按下與放開要分開送（例如把路人押進爐火） */
+  onPress?: () => void;
+  onRelease?: () => void;
 }
 
 /** 空白鍵攻擊（與 LocalPlayer 的鍵盤處理一致：冷卻由 runtime 把關） */
@@ -52,6 +58,9 @@ export function InteractionBar() {
   const nearPickup = useGame((s) => (s.nearPickupId ? s.pickups[s.nearPickupId] : undefined));
   const carriedPet = useGame((s) => (meId ? Object.values(s.pets).find((p) => p.carrierId === meId) : undefined));
   const nearPet = useGame((s) => (s.nearPetId ? s.pets[s.nearPetId] : undefined));
+  const npc = useGame((s) => s.npc);
+  const nearNpc = useGame((s) => s.nearNpc);
+  const nearHazard = useGame((s) => s.nearHazard);
   const nearStove = useGame((s) => s.nearStove);
   const stove = useGame((s) => s.stove);
   const nearOven = useGame((s) => s.nearOven);
@@ -59,6 +68,7 @@ export function InteractionBar() {
   const court = useGame((s) => s.court);
   const nearCourtSlot = useGame((s) => s.nearCourtSlot);
 
+  const carryingNpc = Boolean(meId) && npc.carrierId === meId;
   const weapon = getWeapon(me?.weaponId ?? '');
   const holdingFood = weapon?.edible === true;
   const exercise = weapon?.exercise;
@@ -73,16 +83,27 @@ export function InteractionBar() {
   // E：一次只會有一種主要互動，順序即優先序（與 LocalPlayer 的 E 鍵一致）
   if (seated) actions.push({ hint: 'E', label: '起身', onClick: sendStand });
   else if (carriedPet) actions.push({ hint: 'E', label: `放下 ${getPet(carriedPet.petType).name}`, onClick: sendPetDrop });
+  else if (carryingNpc) actions.push({ hint: 'E', label: `放開 ${NPC.name}`, onClick: sendNpcDrop });
   else if (canCourtJoin) actions.push({ hint: 'E', label: `報名匹克球（${nearCourtSlot} 側）`, onClick: () => sendCourtJoin(nearCourtSlot!) });
   else if (nearPet) actions.push({ hint: 'E', label: `抱起 ${getPet(nearPet.petType).name}`, onClick: () => sendPetPickup(nearPet.id) });
+  else if (nearNpc) actions.push({ hint: 'E', label: `拖走 ${NPC.name}`, onClick: sendNpcPickup });
   else if (canOvenTake)
     actions.push({ hint: 'E', label: `${oven.stage === 'done' ? '取出' : '拿回'} ${ovenFoodName ?? '食物'}`, onClick: sendOvenTake });
   else if (canStoveTake) actions.push({ hint: 'E', label: `拿回 ${stove.foodId ? (getWeapon(stove.foodId)?.name ?? '食物') : '食物'}`, onClick: sendStoveTake });
   else if (nearPickup) actions.push({ hint: 'E', label: `撿起 ${getWeapon(nearPickup.weaponId)?.name ?? '武器'}`, onClick: () => sendPickup(nearPickup.id) });
   else if (nearSeatId) actions.push({ hint: 'E', label: seatLabel, onClick: () => sendSit(nearSeatId) });
 
+  // F：拖著路人走到爐火／水池旁時，按住把他的頭壓下去（放開才收手）
+  if (carryingNpc && nearHazard && !dead)
+    actions.push({
+      hint: '按住 F',
+      label: `把${NPC.name}的頭${NPC_HAZARDS[nearHazard].action}`,
+      onPress: () => sendNpcPin(true),
+      onRelease: () => sendNpcPin(false),
+    });
+
   // F：拿著食物時餵寵物 / 放進烤箱 / 放上爐子
-  if (holdingFood && !carriedPet && !dead) {
+  if (holdingFood && !carriedPet && !carryingNpc && !dead) {
     if (nearPet) actions.push({ hint: 'F', label: `餵${getPet(nearPet.petType).name}吃${weapon.name}`, onClick: () => sendFeedPet(nearPet.id) });
     else if (nearOven && !oven.foodId && weapon.bakesTo) actions.push({ hint: 'F', label: `把${weapon.name}放進烤箱`, onClick: sendOvenPlace });
     else if (nearStove && !stove.foodId) actions.push({ hint: 'F', label: `把${weapon.name}放上爐子`, onClick: sendStovePlace });
@@ -114,6 +135,9 @@ export function InteractionBar() {
               key={`${a.hint}:${a.label}`}
               type="button"
               onClick={a.onClick}
+              onPointerDown={a.onPress}
+              onPointerUp={a.onRelease}
+              onPointerLeave={a.onRelease}
               className="glass pointer-events-auto flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium cursor-pointer hover:bg-white"
             >
               <kbd className="rounded-md bg-ink px-1.5 py-0.5 text-[11px] font-bold text-white">{a.hint}</kbd>

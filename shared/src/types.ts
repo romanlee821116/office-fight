@@ -290,6 +290,19 @@ export interface NpcState {
   rotY: number;
   anim: AnimState;
   hp: number;
+  /** 正在拖他的玩家 sessionId，空字串代表沒人拖 */
+  carrierId: string;
+  /** 正被押在哪個危險區，空字串代表沒被押著 */
+  pinnedAt: NpcHazard | '';
+  onFire: boolean;
+}
+
+/** 可以把路人押進去的危險區 */
+export type NpcHazard = 'stove' | 'pond';
+
+/** C→S：按住／放開「把路人押下去」 */
+export interface NpcPinPayload {
+  on: boolean;
 }
 
 /** S→C：寵物被丟出去的飛行資訊（命運已由伺服端決定，前端只播飛行視覺） */
@@ -419,6 +432,9 @@ export const Messages = {
   petThrow: 'petThrow',
   petFlight: 'petFlight',
   npcSay: 'npcSay',
+  npcPickup: 'npcPickup',
+  npcDrop: 'npcDrop',
+  npcPin: 'npcPin',
   stovePlace: 'stovePlace',
   stoveTake: 'stoveTake',
   ovenPlace: 'ovenPlace',

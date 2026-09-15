@@ -5,6 +5,7 @@ import {
   COURT,
   DANCES,
   EMOTES,
+  NPC,
   OVEN,
   PET,
   PICKUPS,
@@ -14,6 +15,7 @@ import {
   SYNC_INTERVAL_MS,
   WALK_SPEED,
   findNearestSeat,
+  findNpcHazard,
   getAvatar,
   getWeapon,
   moveWithCollision,
@@ -26,6 +28,9 @@ import {
   sendDrop,
   sendFeedPet,
   sendMove,
+  sendNpcDrop,
+  sendNpcPickup,
+  sendNpcPin,
   sendPetDrop,
   sendPetPickup,
   sendPetThrow,
@@ -42,7 +47,7 @@ import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
 import { FireFX } from './FireFX';
 import { NameTag } from './NameTag';
-import { canAttack, local, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote, triggerSwing } from './runtime';
+import { canAttack, local, npcTarget, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote, triggerSwing } from './runtime';
 import { useKeyboard } from './useKeyboard';
 
 /** 每隔幾幀掃描一次附近座位 */
@@ -133,6 +138,8 @@ export function LocalPlayer() {
   const frame = useRef(0);
   /** 已送出 stand、等待伺服端回應 */
   const standPending = useRef(false);
+  /** 正按著把路人押進危險區（放開／失焦時要記得收手） */
+  const pinning = useRef(false);
 
   useEffect(() => {
     if (group.current) {
@@ -172,6 +179,13 @@ export function LocalPlayer() {
         // 拿著食物：餵附近的寵物，否則放進烤箱 / 放上瓦斯爐
         if (local.dead || local.seatId) return;
         const st = useGame.getState();
+        // 拖著路人：按住 F 把他的頭壓進旁邊的爐火／水池，放開才收手
+        if (npcTarget.carrierId && npcTarget.carrierId === st.me?.sessionId) {
+          if (!st.nearHazard) return;
+          pinning.current = true;
+          sendNpcPin(true);
+          return;
+        }
         if (carriedPetId(st.me?.sessionId)) return; // 抱著寵物時手上的食物先留著
         const weapon = getWeapon(local.weaponId);
         if (!weapon?.edible) return;
@@ -202,10 +216,14 @@ export function LocalPlayer() {
           standPending.current = true;
         } else if (carriedPetId(state.me?.sessionId)) {
           sendPetDrop(); // 抱著寵物時 E 是輕輕放下
+        } else if (npcTarget.carrierId && npcTarget.carrierId === state.me?.sessionId) {
+          sendNpcDrop(); // 拖著路人時 E 是放開他
         } else if (state.nearCourtSlot && !inCourtMatch(state.me?.sessionId)) {
           sendCourtJoin(state.nearCourtSlot);
         } else if (nearPetId) {
           sendPetPickup(nearPetId);
+        } else if (state.nearNpc) {
+          sendNpcPickup();
         } else if (state.nearOven && state.oven.foodId && !local.weaponId) {
           sendOvenTake(); // 空手把烤箱裡的食物拿出來
         } else if (state.nearStove && state.stove.stage === 'cooking' && !local.weaponId) {
@@ -225,8 +243,23 @@ export function LocalPlayer() {
       const dance = DANCES.find((d) => e.key === d.key);
       if (dance) toggleDance(dance.id);
     };
+    // 放開 F（或切走視窗）就收手；漏送的話伺服端會一直押著扣血
+    const release = () => {
+      if (!pinning.current) return;
+      pinning.current = false;
+      sendNpcPin(false);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'KeyF') release();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', release);
+    };
   }, []);
 
   useFrame((state, dt) => {
@@ -343,6 +376,13 @@ export function LocalPlayer() {
       useGame.getState().setNearSeat(seat?.id ?? null);
       useGame.getState().setNearPickup(nearestPickup(local.x, local.z));
       useGame.getState().setNearPet(nearestPet(local.x, local.z));
+      // 路人：沒被別人拖著、站得夠近才提示拖走；拖著的時候改提示腳邊的危險區
+      const meId = useGame.getState().me?.sessionId;
+      const draggingNpc = npcTarget.carrierId !== '' && npcTarget.carrierId === meId;
+      const npcReachable =
+        !npcTarget.carrierId && npcTarget.anim !== 'dead' && Math.hypot(local.x - npcTarget.x, local.z - npcTarget.z) <= NPC.pickupRange;
+      useGame.getState().setNearNpc(npcReachable);
+      useGame.getState().setNearHazard(draggingNpc ? findNpcHazard(local.x, local.z) : null);
       // 爐子與烤箱只隔 2.6m，站在冰箱前會同時進到兩者範圍；只認比較近的那一台，提示才不會打架
       const dStove = Math.hypot(local.x - STOVE.x, local.z - STOVE.z);
       const dOven = Math.hypot(local.x - OVEN.x, local.z - OVEN.z);

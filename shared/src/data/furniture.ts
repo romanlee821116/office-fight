@@ -2,6 +2,7 @@ import {
   GYM_WALL_X,
   OVEN,
   PLAYGROUND,
+  POND,
   PLAY_MAX_Z,
   PLAY_MIN_X,
   PLAY_MIN_Z,
@@ -219,7 +220,7 @@ const playground: FurnitureDef[] = [
   { id: 'seesaw', type: 'playground', x: 36.5, z: 11.5, w: PLAYGROUND.seesaw.width, d: PLAYGROUND.seesaw.depth, h: 1.1 },
 
   // 水池與沙坑（不能坐，水池擋路、沙坑可以走過去）
-  { id: 'pond', type: 'playground', x: 26.5, z: 11.8, w: PLAYGROUND.pond.width, d: PLAYGROUND.pond.depth, h: 0.35 },
+  { id: 'pond', type: 'playground', x: POND.x, z: POND.z, w: PLAYGROUND.pond.width, d: PLAYGROUND.pond.depth, h: 0.35 },
   {
     id: 'sandbox',
     type: 'playground',

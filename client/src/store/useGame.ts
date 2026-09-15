@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { BUBBLE_DURATION_MS, CHAT_HISTORY } from '@office/shared';
+import { BUBBLE_DURATION_MS, CHAT_HISTORY, type NpcHazard } from '@office/shared';
 
 export type Phase = 'lobby' | 'connecting' | 'office' | 'reconnecting';
 
@@ -47,6 +47,11 @@ export interface PlayerInfo {
 export interface NpcInfo {
   hp: number;
   anim: string;
+  /** 正在拖他的玩家 sessionId，空字串代表沒人拖 */
+  carrierId: string;
+  /** 正被押在哪個危險區（'' | 'stove' | 'pond'） */
+  pinnedAt: NpcHazard | '';
+  onFire: boolean;
 }
 
 export interface PetInfo {
@@ -123,6 +128,10 @@ interface GameState {
   /** 本地玩家附近可抱起的寵物 */
   nearPetId: string | null;
   /** 本地玩家是否在瓦斯爐互動範圍內 */
+  /** 站得夠近可以抓住路人拖走 */
+  nearNpc: boolean;
+  /** 拖著路人時，腳邊最近的危險區（可以按住把他的頭壓下去） */
+  nearHazard: NpcHazard | null;
   nearStove: boolean;
   /** 瓦斯爐狀態（伺服端同步） */
   stove: { foodId: string; stage: string };
@@ -179,6 +188,8 @@ interface GameState {
   setNearSeat: (seatId: string | null) => void;
   setNearPickup: (pickupId: string | null) => void;
   setNearPet: (petId: string | null) => void;
+  setNearNpc: (near: boolean) => void;
+  setNearHazard: (hazard: NpcHazard | null) => void;
   setNearStove: (near: boolean) => void;
   setStove: (stove: { foodId: string; stage: string }) => void;
   setNearOven: (near: boolean) => void;
@@ -218,6 +229,8 @@ const initial = {
   nearSeatId: null,
   nearPickupId: null,
   nearPetId: null,
+  nearNpc: false,
+  nearHazard: null,
   nearStove: false,
   stove: { foodId: '', stage: '' },
   nearOven: false,
@@ -230,7 +243,7 @@ const initial = {
   nearCourtSlot: null,
   pickups: {},
   pets: {},
-  npc: { hp: 0, anim: 'idle' },
+  npc: { hp: 0, anim: 'idle', carrierId: '', pinnedAt: '' as const, onFire: false },
   seated: false,
   deadUntil: null,
   duelInvite: null,
@@ -287,6 +300,8 @@ export const useGame = create<GameState>((set) => ({
   setNearSeat: (nearSeatId) => set((s) => (s.nearSeatId === nearSeatId ? s : { nearSeatId })),
   setNearPickup: (nearPickupId) => set((s) => (s.nearPickupId === nearPickupId ? s : { nearPickupId })),
   setNearPet: (nearPetId) => set((s) => (s.nearPetId === nearPetId ? s : { nearPetId })),
+  setNearNpc: (nearNpc) => set((s) => (s.nearNpc === nearNpc ? s : { nearNpc })),
+  setNearHazard: (nearHazard) => set((s) => (s.nearHazard === nearHazard ? s : { nearHazard })),
   setNearStove: (nearStove) => set((s) => (s.nearStove === nearStove ? s : { nearStove })),
   setStove: (stove) => set({ stove }),
   setNearOven: (nearOven) => set((s) => (s.nearOven === nearOven ? s : { nearOven })),

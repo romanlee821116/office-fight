@@ -46,6 +46,11 @@ export class Npc extends Schema {
   @type('float32') rotY: number = 0;
   @type('string') anim: AnimState = 'idle';
   @type('number') hp: number = NPC.maxHp;
+  /** 正在拖他的玩家 sessionId */
+  @type('string') carrierId: string = '';
+  /** '' | 'stove' | 'pond' */
+  @type('string') pinnedAt: string = '';
+  @type('boolean') onFire: boolean = false;
 }
 
 export class OfficeState extends Schema {

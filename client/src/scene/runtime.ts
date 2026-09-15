@@ -9,6 +9,7 @@ import {
   type AnimState,
   type DanceId,
   type EmoteId,
+  type NpcHazard,
   type PetAnim,
   type ProjectileEvent,
 } from '@office/shared';
@@ -48,6 +49,10 @@ export const npcTarget = {
   z: SPAWN_POINT.z,
   rotY: 0,
   anim: 'idle' as AnimState,
+  /** 正在拖他的玩家 sessionId，空字串代表沒人拖 */
+  carrierId: '',
+  /** 正被押在哪個危險區（'' | 'stove' | 'pond'） */
+  pinnedAt: '' as NpcHazard | '',
   /** 首次收到時直接 snap 到位 */
   fresh: true,
 };
@@ -224,6 +229,8 @@ export function resetRuntime(): void {
   npcTarget.z = SPAWN_POINT.z;
   npcTarget.rotY = 0;
   npcTarget.anim = 'idle';
+  npcTarget.carrierId = '';
+  npcTarget.pinnedAt = '';
   npcTarget.fresh = true;
   local.x = SPAWN_POINT.x;
   local.z = SPAWN_POINT.z;
