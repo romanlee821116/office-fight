@@ -20,20 +20,27 @@ const PAGODA_H = landmarkHeight(62, 10);
 const VERMILION = '#C4392E';
 
 /**
- * 町家：白牆、深色木格柵、寄棟瓦頂。
- * 主力沿參道兩側夾道而立（門面朝參道），其餘散在另外三面當背景。
+ * 町家：白牆、深色木格柵、寄棟瓦頂。只在參道入口兩側各留兩棟當門前町，
+ * 其餘位置改成庭園與樹林——這片是神社的參道，不是住宅區。
  */
 const HOUSE_ROWS: { x: number; z: number; rotY: number }[] = [];
-for (const t of [44, 53, 62, 71]) {
+for (const t of [45, 55]) {
   for (const side of [-1, 1]) {
-    const p = facingSpot(t, side * 11);
+    const p = facingSpot(t, side * 12);
     HOUSE_ROWS.push({ x: p.x, z: p.z, rotY: side > 0 ? -Math.PI / 4 : (Math.PI * 3) / 4 });
   }
 }
-for (let i = -2; i <= 2; i++) {
-  HOUSE_ROWS.push({ x: KEEPOUT.maxX + 20, z: i * 11 + 5, rotY: -Math.PI / 2 });
-  HOUSE_ROWS.push({ x: WORLD_CX + i * 11 + 16, z: KEEPOUT.maxZ + 22, rotY: Math.PI });
-}
+
+/** 日式庭園（外部模型：石橋、池、修剪樹）。原始高 7.01m，×1.2 約 8.4m，低於五重塔不會擋 */
+const GARDEN_SCALE = 1.2;
+const GARDEN_R = 7;
+const GARDENS: { x: number; z: number; rotY: number }[] = [
+  { ...facingSpot(30, -23), rotY: Math.PI / 3 },
+  { ...facingSpot(43, 24), rotY: -Math.PI / 5 },
+  { ...facingSpot(66, -26), rotY: Math.PI / 6 },
+  { x: KEEPOUT.maxX + 24, z: 4, rotY: -Math.PI / 2 },
+  { x: WORLD_CX + 22, z: KEEPOUT.maxZ + 26, rotY: Math.PI },
+];
 
 function build() {
   const rand = rng(81);
@@ -43,38 +50,47 @@ function build() {
     if (Math.hypot(c.x - PAGODA.x, c.z - PAGODA.z) < 16) continue;
     if (inViewCorridor(c.x, c.z, 8)) continue; // 參道淨空
     if (HOUSE_ROWS.some((h) => Math.hypot(h.x - c.x, h.z - c.z) < 8)) continue;
+    if (GARDENS.some((g) => Math.hypot(g.x - c.x, g.z - c.z) < GARDEN_R + 3)) continue;
 
     if (c.dist >= MID) {
       const roll = rand();
-      if (roll < 0.3 && !inViewCorridor(c.x, c.z, 16)) {
+      // 遠景以松林為主，市街只留稀疏剪影當天際線
+      if (roll < 0.1 && !inViewCorridor(c.x, c.z, 16)) {
         pb.add(`japan/city/${pick(rand, FAR_BUILDINGS)}`, { x: c.x, z: c.z, rotY: (Math.floor(rand() * 4) * Math.PI) / 2, scale: range(rand, 8, 10) }, { tint: pick(rand, FAR_TINTS) });
-      } else if (roll < 0.75) {
+      } else if (roll < 0.82) {
         pb.add('japan/nature/tree_pineTallA_detailed', { x: c.x, z: c.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 5, 6.5) }, { recolor: NATURE });
+        if (rand() < 0.5) {
+          pb.add('japan/nature/tree_pineTallA_detailed', { x: c.x + range(rand, -3, 3), z: c.z + range(rand, -3, 3), rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 4, 5.5) }, { recolor: NATURE });
+        }
       }
       continue;
     }
 
     if (c.dist >= NEAR) {
       const roll = rand();
-      if (roll < 0.3) {
+      if (roll < 0.26) {
         pb.add('japan/nature/tree_pineRoundB', { x: c.x, z: c.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 4, 5) }, { recolor: NATURE });
-      } else if (roll < 0.55) {
+      } else if (roll < 0.5) {
         pb.add('japan/nature/tree_pineRoundB', { x: c.x, z: c.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 3.5, 4.5) }, { recolor: SAKURA });
-      } else if (roll < 0.8) {
-        // 竹叢：三五株一簇
-        for (let k = 0; k < 4; k++) {
-          pb.add('japan/nature/crops_bambooStageB', { x: c.x + range(rand, -1.6, 1.6), z: c.z + range(rand, -1.6, 1.6), rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 5, 7) }, { recolor: NATURE });
+      } else if (roll < 0.78) {
+        // 竹叢：五六株一簇
+        for (let k = 0; k < 6; k++) {
+          pb.add('japan/nature/crops_bambooStageB', { x: c.x + range(rand, -1.8, 1.8), z: c.z + range(rand, -1.8, 1.8), rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 5, 7) }, { recolor: NATURE });
         }
+      } else if (roll < 0.95) {
+        pb.add('japan/nature/tree_pineSmallC', { x: c.x, z: c.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 3, 4) }, { recolor: NATURE });
       }
       continue;
     }
 
-    // 近景：枯山水的石組與小松
+    // 近景：枯山水的石組與修剪過的小松
     const roll = rand();
     if (roll < 0.3) {
       pb.add(`japan/nature/${rand() < 0.5 ? 'rock_smallA' : 'rock_smallD'}`, { x: c.x, z: c.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 4, 6) }, { recolor: NATURE });
-    } else if (roll < 0.5) {
+    } else if (roll < 0.62) {
       pb.add('japan/nature/tree_pineSmallC', { x: c.x, z: c.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 2.5, 3.2) }, { recolor: NATURE });
+    } else if (roll < 0.78) {
+      pb.add('japan/nature/tree_pineRoundB', { x: c.x, z: c.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 2.2, 2.8) }, { recolor: SAKURA });
     }
   }
 
@@ -83,6 +99,27 @@ function build() {
     if (Math.abs(t - 38) < 2.4) continue; // 鳥居柱位
     const p = facingSpot(t, range(rand, -0.4, 0.4));
     pb.add('japan/nature/stone_smallFlatB', { x: p.x, z: p.z, rotY: range(rand, 0, Math.PI * 2), scale: 4 }, { recolor: NATURE });
+  }
+  // 日式庭園
+  for (const g of GARDENS) {
+    pb.add('japan/landmark/garden', { x: g.x, z: g.z, rotY: g.rotY, scale: GARDEN_SCALE });
+  }
+  // 參道兩側夾道的松與燈籠間的矮叢
+  for (let t = 16; t < 70; t += 4.5) {
+    for (const side of [-1, 1]) {
+      if (rand() < 0.35) continue;
+      const p = facingSpot(t + range(rand, -1.5, 1.5), side * range(rand, 6, 8.5));
+      if (GARDENS.some((g) => Math.hypot(g.x - p.x, g.z - p.z) < GARDEN_R + 2)) continue;
+      if (HOUSE_ROWS.some((h) => Math.hypot(h.x - p.x, h.z - p.z) < 7)) continue;
+      const roll = rand();
+      if (roll < 0.45) {
+        pb.add('japan/nature/tree_pineTallA_detailed', { x: p.x, z: p.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 4, 5.5) }, { recolor: NATURE });
+      } else if (roll < 0.7) {
+        pb.add('japan/nature/tree_pineRoundB', { x: p.x, z: p.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 3, 4) }, { recolor: SAKURA });
+      } else {
+        pb.add('japan/nature/tree_pineSmallC', { x: p.x, z: p.z, rotY: range(rand, 0, Math.PI * 2), scale: range(rand, 2.4, 3.2) }, { recolor: NATURE });
+      }
+    }
   }
   // 島外四周零星碎石
   for (const p of ringPoints(30, 1, NEAR, rand, 3)) {

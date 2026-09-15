@@ -17,8 +17,16 @@ const PYRAMIDS = [
   { ...facingSpot(74, 6), h: landmarkHeight(74, 11) },
   { ...facingSpot(58, 34), h: landmarkHeight(58, 9.5) },
 ].map((p) => ({ ...p, side: p.h * 1.55 }));
-const SPHINX = facingSpot(34, 12);
-const SPHINX_K = landmarkHeight(34, 8.5) / 12;
+/**
+ * 人面獅身改用攝影測量掃描模型（水晶宮公園的獅身像，200 萬面減到 12k、貼圖 8192 縮到 1024）。
+ * 原始 OBJ 是 Z-up 卻被當成 Y-up 匯入而躺倒，已在 Blender 轉正；直立後長 18.54（頭在 +X）
+ * × 高 8.12，×1.5 約 28m 長、12m 高，角高度 6.3°，低於金字塔所以不會擋住它們。
+ * rotY 0 讓長軸與視線夾 45°，是能同時看到頭與身體的四分之三視角；
+ * 掃描貼圖偏暗，用沙色 tint 拉亮才不會在低多邊形沙漠裡顯得突兀。
+ */
+const SPHINX = facingSpot(45);
+const SPHINX_SCALE = 1.5;
+const SPHINX_LEN = 18.54 * SPHINX_SCALE;
 const TEMPLE = { x: KEEPOUT.maxX + 22, z: 2 };
 const OASIS = { x: KEEPOUT.minX - 24, z: 10, r: 7 };
 
@@ -38,6 +46,7 @@ function build() {
     const p = facingSpot(22, lat);
     pb.add('egypt/nature/statue_obelisk', { x: p.x, z: p.z, scale: 9 }, { recolor: NATURE });
   }
+  pb.add('egypt/landmark/sphinx', { x: SPHINX.x, z: SPHINX.z, rotY: 0, scale: SPHINX_SCALE }, { tint: '#E3CDA0' });
   // 綠洲的棕櫚
   for (let i = 0; i < 9; i++) {
     const a = range(rand, 0, Math.PI * 2);
@@ -47,7 +56,7 @@ function build() {
 
   for (const c of gridCells(11, 6, rand)) {
     if (PYRAMIDS.some((p) => Math.hypot(p.x - c.x, p.z - c.z) < p.side * 0.75)) continue;
-    if (Math.hypot(SPHINX.x - c.x, SPHINX.z - c.z) < 16) continue;
+    if (Math.hypot(SPHINX.x - c.x, SPHINX.z - c.z) < SPHINX_LEN * 0.6) continue;
     if (Math.abs(c.x - TEMPLE.x) < 16 && Math.abs(c.z - TEMPLE.z) < 9) continue;
     if (Math.hypot(OASIS.x - c.x, OASIS.z - c.z) < OASIS.r + 7) continue;
     const roll = rand();
@@ -76,31 +85,16 @@ function build() {
 
 const PROPS = build();
 
-/** 人面獅身：臥姿獅身、前伸雙足、頭巾與面孔，面朝辦公室 */
-function sphinx(b: PartBuilder, k: number): void {
-  b.box({ w: 20 * k, h: 2 * k, d: 30 * k, c: SANDSTONE_DARK });
-  b.box({ y: 2 * k, w: 7 * k, h: 5.5 * k, d: 16 * k, c: SANDSTONE });
-  for (const dx of [-3.2, 3.2]) b.box({ x: dx * k, y: 2 * k, z: 12 * k, w: 2.2 * k, h: 2.4 * k, d: 10 * k, c: SANDSTONE });
-  b.box({ y: 7.5 * k, z: 6.2 * k, w: 4.2 * k, h: 5 * k, d: 4.6 * k, c: SANDSTONE });
-  // 頭巾只包住頭的兩側與後方，臉留出來
-  for (const sx of [-1, 1]) b.box({ x: sx * 2.9 * k, y: 6.6 * k, z: 5.8 * k, w: 1.6 * k, h: 6 * k, d: 4.2 * k, c: '#B98D45' });
-  b.box({ y: 7.2 * k, z: 3.6 * k, w: 6.4 * k, h: 5.6 * k, d: 1.6 * k, c: '#B98D45' });
-  b.box({ y: 12.5 * k, z: 6.2 * k, w: 6.4 * k, h: 1.1 * k, d: 4.6 * k, c: '#B98D45' });
-  b.box({ y: 11.4 * k, z: 8.4 * k, w: 4.6 * k, h: 1.1 * k, d: 0.3 * k, c: '#3B5C8C' });
-  // 眼睛與鬍鬚
-  for (const sx of [-1, 1]) b.box({ x: sx * 1.0 * k, y: 9.6 * k, z: 8.5 * k, w: 0.9 * k, h: 0.45 * k, d: 0.2 * k, c: '#3B5C8C' });
-  b.box({ y: 7.2 * k, z: 8.4 * k, w: 1.4 * k, h: 1.5 * k, d: 0.5 * k, c: '#C9A56D' });
-}
-
 function buildLandmarks(): PartBuilder {
   const root = new PartBuilder().at(0, GROUND_Y, 0);
+
+  // 獅身像的沙台
+  root.disc({ x: SPHINX.x, y: 0.03, z: SPHINX.z, r: SPHINX_LEN * 0.62, c: '#CFB27E', seg: 28 });
 
   PYRAMIDS.forEach((p, i) => {
     root.pyr({ x: p.x, z: p.z, side: p.side, h: p.h, c: i === 1 ? SANDSTONE_DARK : SANDSTONE });
     root.disc({ x: p.x, y: 0.02, z: p.z, r: p.side * 0.8, c: '#CFB27E', seg: 24 });
   });
-  // 身體沿局部 +Z 延伸，轉 45° 正面才對著相機
-  sphinx(root.at(SPHINX.x, 0, SPHINX.z, Math.PI / 4), SPHINX_K);
 
   // 神殿橫樑與台基
   root.box({ x: TEMPLE.x, z: TEMPLE.z, w: 26, h: 0.6, d: 12, c: SANDSTONE_DARK });
