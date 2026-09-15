@@ -35,11 +35,27 @@ export const PLAY_MAX_Z = 20;
 export const PLAY_CENTER_X = (PLAY_MIN_X + PLAY_MAX_X) / 2;
 export const PLAY_CENTER_Z = (PLAY_MIN_Z + PLAY_MAX_Z) / 2;
 
-/** 世界外框（含遊戲區）：碰撞最外層的夾制範圍 */
+/**
+ * 遊樂園：兒童遊戲區再往 +Z 的一塊戶外場地，橫跨健身房與匹克球場的正後方。
+ * 只佔 x >= PARK_MIN_X 那一段，左半邊 (x < PARK_MIN_X, z > PLAY_MAX_Z) 一樣由
+ * furniture.ts 的隱形碰撞塊擋住，所以世界外框仍是 L 形的外接矩形。
+ * 入口在兒童遊戲區南側圍籬的缺口（PARK_GATE_X）。
+ */
+export const PARK_MIN_X = GYM_WALL_X;
+export const PARK_MAX_X = ROOM_MAX_X;
+export const PARK_MIN_Z = PLAY_MAX_Z;
+export const PARK_MAX_Z = 32;
+export const PARK_CENTER_X = (PARK_MIN_X + PARK_MAX_X) / 2;
+export const PARK_CENTER_Z = (PARK_MIN_Z + PARK_MAX_Z) / 2;
+/** 從兒童遊戲區走進遊樂園的缺口中心與寬度 */
+export const PARK_GATE_X = 30;
+export const PARK_GATE_W = 4;
+
+/** 世界外框（含遊戲區與遊樂園）：碰撞最外層的夾制範圍 */
 export const WORLD_MIN_X = ROOM_MIN_X;
 export const WORLD_MAX_X = ROOM_MAX_X;
 export const WORLD_MIN_Z = ROOM_MIN_Z;
-export const WORLD_MAX_Z = PLAY_MAX_Z;
+export const WORLD_MAX_Z = PARK_MAX_Z;
 
 /** 玩家 */
 export const PLAYER_RADIUS = 0.35;
@@ -170,7 +186,7 @@ export const NPC = {
   speakGapMs: [3000, 7000] as [number, number],
   /** 說話時揮手的動作長度 */
   speakAnimMs: 1200,
-  /** 走近多少距離可以抓住他拖走 */
+  /** 走近多少距離可以把他扛起來 */
   pickupRange: 1.6,
   /** 被拖著時，頭離拖的人多遠（人躺在他身後） */
   dragDist: 0.75,
@@ -205,10 +221,10 @@ export function findNpcHazard(x: number, z: number): NpcHazard | null {
 }
 
 /** 被按在爐火上時的求饒台詞 */
-export const NPC_FIRE_LINES = ['好燙好燙好燙', '我支持你，但這樣我會熟', '我不支持這個！', '我支持放開我'];
+export const NPC_FIRE_LINES = ['幹好燙好燙好燙', '我支持你，但這樣我會熟', '我不支持這個！', '我支持放開我'];
 
 /** 被壓進水裡時的求饒台詞（嘴巴在水裡，講不清楚） */
-export const NPC_WATER_LINES = ['咕嚕咕嚕咕嚕...', '我支持你，但我不會游泳', '我不支持這個！咕嚕', '我支持放開我…咕嚕'];
+export const NPC_WATER_LINES = ['幹咕嚕咕嚕咕嚕...', '我支持你，但我不會游泳', '我不支持這個！咕嚕', '我支持放開我…咕嚕'];
 
 /** 依危險區挑一份求饒台詞 */
 export const NPC_PIN_LINES: Record<NpcHazard, readonly string[]> = {
@@ -217,7 +233,7 @@ export const NPC_PIN_LINES: Record<NpcHazard, readonly string[]> = {
 };
 
 /** 路人的台詞，每次隨機挑一句（不會連說同一句） */
-export const NPC_LINES = ['我支持你們，但JOE說不行', '我支持你們的支持', '我支持你說話', '我支持你們，但我真沒錢', '那從公司的角度有什麼更好的做法嗎？'];
+export const NPC_LINES = ['我支持你們，但JOE說不行', '我支持你們的支持', '我支持你說話', '我支持你們，但我真沒錢', '那從公司的角度有什麼更好的做法嗎？', '要不要吃餅'];
 
 /**
  * 廚房瓦斯爐：拿著食物按 E 放上去煎，放太久會燒起來。
@@ -398,6 +414,38 @@ export const PLAYGROUND = {
 };
 
 /**
+ * 旋轉木馬。carousel.glb 是單一 mesh（屋頂與轉盤熔在一起），所以整座一起轉——
+ * 底座是平的圓盤，轉起來看不出來。原始半徑 12.112 單位、高 19.08 單位。
+ */
+export const CAROUSEL = {
+  x: 18,
+  z: 26,
+  radius: 4.5,
+  /** carousel.glb 載入後整體寬 0.2422 單位，×37.2 得到直徑 9m（高 7.1m） */
+  scale: 37.2,
+  /** 轉一圈的秒數；與牆上時鐘同一條時間軸，所有人看到的角度一致 */
+  turnSec: 18,
+  /**
+   * 木馬的位置全部量自 carousel.glb 的頂點：8 匹馬間隔 45°，馬身半徑 2.26~2.69。
+   * 以某匹馬為 0° 時，-18°~-6° 是臀部與後腿、+3°~+15° 是前腿與馬頭（最高 1.59m），
+   * 中間 0° 附近頂點稀疏、頂面在 1.38m，那就是馬鞍。
+   * 馬頭朝角度遞增的方向，所以轉盤往正角度轉，馬才是頭朝前跑。
+   */
+  seatCount: 8,
+  seatRadius: 2.5,
+  /** 馬鞍相對於馬匹中心的角度（量下來剛好就在中心） */
+  seatAngle: 0,
+  /**
+   * 座位離地高度。整座木馬是單一 mesh、馬不會上下動，
+   * 所以人也不能起伏，不然會飄離馬背。馬背頂面實測 1.38m，
+   * 角色坐姿的臀部約在原點上方 0.45m，兩者相減即為此值。
+   */
+  seatY: 0.95,
+  /** 上下車時站的地面點離中心多遠 */
+  boardRadius: 6,
+};
+
+/**
  * 兒童遊戲區的水池：平常只是擋路的景，但可以把路人押進去溺水。
  * 座標與 furniture.ts 的 pond 家具共用這一份。
  */
@@ -423,6 +471,36 @@ export const NPC_HAZARDS: Record<
 > = {
   stove: { x: STOVE.x, z: STOVE.z, range: STOVE.range, label: '瓦斯爐', action: '按在爐火上', headY: STOVE.topY },
   pond: { x: POND.x, z: POND.z, range: POND.pinRange, label: '水池', action: '壓進水裡', headY: POND.headY },
+};
+
+/**
+ * 雲霄飛車。軌道由 data/coaster.ts 依零件表推出來，這裡只放整體參數。
+ * Kenney coaster kit 是 1 unit = 1m，所以零件不縮放直接用。
+ */
+export const COASTER = {
+  /** 軌道起點（車站月台那一端）與起始朝向（+X） */
+  startX: 26,
+  startZ: 22,
+  startYaw: Math.PI / 2,
+  /**
+   * 整條軌道的最低軌面高度。抬到 2.6m 讓人可以從底下任意走過去，
+   * 這樣軌道完全不需要碰撞盒；上車靠車站地面的座位，坐下去就送上車。
+   */
+  baseY: 2.6,
+  /** 車廂在軌面上的高度、車廂間距、幾節車廂（= 幾個座位） */
+  carY: 0,
+  carGap: 1.45,
+  carCount: 3,
+  /** 乘客坐在車廂底盤上方多高 */
+  riderY: 0.3,
+  /**
+   * 速度用能量守恆推：v = sqrt(vMin² + 2g(hMax - y))，所以爬坡慢、俯衝快。
+   * vMin 是最高點的速度，g 調大一點讓落差更有感。
+   */
+  minSpeed: 3.2,
+  gravity: 10,
+  /** 進站後停留多久讓人上下車 */
+  dwellMs: 3000,
 };
 
 /** 決鬥 */

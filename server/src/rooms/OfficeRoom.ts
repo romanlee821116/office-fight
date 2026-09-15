@@ -17,8 +17,12 @@ import {
   OVEN,
   STOVE,
   WEATHER,
+  CAROUSEL,
+  coasterAtStation,
+  coasterCarAt,
   findNpcHazard,
   getPet,
+  rideSeatAt,
   petSizeFactor,
   DUMBBELL_RACK_SLOTS,
   KITCHEN_CROISSANT_SPOT,
@@ -254,6 +258,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.placeNpc();
     this.clock.setInterval(() => this.tickNpc(), NPC.aiTickMs);
     this.clock.setInterval(() => this.tickNpcHazard(), NPC.hazardTickMs);
+    this.clock.setInterval(() => this.tickRides(), SYNC_INTERVAL_MS);
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
 
     void this.refreshWeather();
@@ -442,6 +447,8 @@ export class OfficeRoom extends Room<OfficeState> {
     const seat = SEAT_BY_ID.get(payload?.seatId ?? '');
     if (!seat) return;
     if (seatDistance(seat, player.x, player.z) > SEAT_INTERACT_DISTANCE + SIT_DISTANCE_TOLERANCE) return;
+    // 車在半路上就不讓人上車，不然會有人憑空出現在半空中
+    if (seat.ride?.kind === 'coaster' && !coasterAtStation(Date.now())) return;
     for (const other of this.state.players.values()) {
       if (other.seatId === seat.id) return; // 已有人
     }
@@ -478,13 +485,48 @@ export class OfficeRoom extends Room<OfficeState> {
     meta.rideTimer?.clear();
     meta.rideTimer = null;
     const seat = SEAT_BY_ID.get(player.seatId);
-    const point = seat ? standPointForSeat(seat) : { x: player.x, z: player.z };
+
+    // 雲霄飛車：整條軌道都架在 2.6m 以上，所以只有停在站上時下車才是安全的，
+    // 車一開走就跳車一律摔死，落點在車子當下的正下方
+    if (seat?.ride?.kind === 'coaster') {
+      const now = Date.now();
+      const atStation = coasterAtStation(now);
+      const car = coasterCarAt(seat.ride.index, now);
+      const landing = atStation ? standPointForSeat(seat) : resolvePosition(car.x, car.z);
+      player.seatId = '';
+      player.x = landing.x;
+      player.z = landing.z;
+      player.anim = 'idle';
+      meta.lastActivityAt = now;
+      meta.lastMoveAt = now;
+      if (!atStation) this.killByFall(player);
+      return;
+    }
+
+    // 旋轉木馬轉到哪就從哪下車（沿半徑推到轉盤外），免得從對面瞬移回上車點
+    const point = seat?.ride ? this.rideExitPoint(player) : seat ? standPointForSeat(seat) : { x: player.x, z: player.z };
     player.seatId = '';
     player.x = point.x;
     player.z = point.z;
     player.anim = 'idle';
     meta.lastActivityAt = Date.now();
     meta.lastMoveAt = Date.now();
+  }
+
+  /** 在高處跳車：摔死，走跟爐火一樣的倒地與重生流程 */
+  private killByFall(player: Player): void {
+    player.hp = 0;
+    player.anim = 'dead';
+    this.dropWeapon(player);
+    this.dropCarriedPet(player.id);
+    this.releaseNpc(player.id);
+    this.leaveCourtIfPlaying(player.id, true);
+    this.broadcastSystem(`🎢 ${player.name} 在雲霄飛車上跳車，摔死了`);
+    logger.info(`跳車摔死：${player.name}`);
+    const meta = this.meta.get(player.id);
+    meta?.respawnTimer?.clear();
+    const playerId = player.id;
+    if (meta) meta.respawnTimer = this.clock.setTimeout(() => this.respawn(playerId), FIGHT.respawnMs);
   }
 
   private handleToggleFight(client: Client, on: boolean): void {
@@ -1372,6 +1414,32 @@ export class OfficeRoom extends Room<OfficeState> {
       carrierName ? `🚶 ${carrierName} 把${NPC.name}${cause}了…他等一下就會爬起來` : `🚶 ${NPC.name}被${cause}了…他等一下就會爬起來`,
     );
     logger.info(`路人${cause} by ${carrierName ?? '爐火'}`);
+  }
+
+  /**
+   * 會動的座位（旋轉木馬）：每個同步刻把坐著的人搬到座位當下的位置。
+   * 前端用同一條 rideSeatAt 每幀自己算，所以看起來是連續的，這裡只負責權威位置。
+   */
+  private tickRides(): void {
+    const now = Date.now();
+    for (const player of this.state.players.values()) {
+      if (!player.seatId) continue;
+      const seat = SEAT_BY_ID.get(player.seatId);
+      if (!seat?.ride) continue;
+      const at = rideSeatAt(seat, now);
+      if (!at) continue;
+      player.x = at.x;
+      player.z = at.z;
+      player.rotY = at.rotY;
+    }
+  }
+
+  /** 從旋轉木馬下車：沿著中心到人的方向推到轉盤外圍的地面 */
+  private rideExitPoint(player: Player): { x: number; z: number } {
+    const dx = player.x - CAROUSEL.x;
+    const dz = player.z - CAROUSEL.z;
+    const len = Math.hypot(dx, dz) || 1;
+    return resolvePosition(CAROUSEL.x + (dx / len) * CAROUSEL.boardRadius, CAROUSEL.z + (dz / len) * CAROUSEL.boardRadius);
   }
 
   /** 玩家抱著的寵物（一次最多一隻） */

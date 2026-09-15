@@ -1,6 +1,10 @@
 import {
   GYM_WALL_X,
+  CAROUSEL,
   OVEN,
+  PARK_MAX_Z,
+  PARK_MIN_X,
+  PARK_MIN_Z,
   PLAYGROUND,
   POND,
   PLAY_MAX_Z,
@@ -233,6 +237,34 @@ const playground: FurnitureDef[] = [
   },
 ];
 FURNITURE.push(...playground);
+
+/**
+ * 遊樂園（x PARK_MIN_X~PARK_MAX_X, z PARK_MIN_Z~PARK_MAX_Z）。
+ * 外觀由 client 的 Park 繪製，這裡只負責碰撞。
+ */
+const park: FurnitureDef[] = [
+  // 左半邊（x < PARK_MIN_X）不開放，跟兒童遊戲區一樣用隱形塊擋掉
+  {
+    id: 'park-void',
+    type: 'park',
+    x: (ROOM_MIN_X + PARK_MIN_X) / 2,
+    z: (PARK_MIN_Z + PARK_MAX_Z) / 2,
+    w: PARK_MIN_X - ROOM_MIN_X,
+    d: PARK_MAX_Z - PARK_MIN_Z,
+    h: WALL_HEIGHT,
+  },
+  // 旋轉木馬：整座擋住，從外圍上下車（方盒圈住圓形轉盤，四角會多擋一點）
+  {
+    id: 'carousel',
+    type: 'park',
+    x: CAROUSEL.x,
+    z: CAROUSEL.z,
+    w: CAROUSEL.radius * 2,
+    d: CAROUSEL.radius * 2,
+    h: 7,
+  },
+];
+FURNITURE.push(...park);
 
 FURNITURE.push(...terrace);
 

@@ -10,15 +10,18 @@ import {
   PET,
   PICKUPS,
   RUN_SPEED,
+  SEATS,
   SEAT_BY_ID,
   STOVE,
   SYNC_INTERVAL_MS,
   WALK_SPEED,
+  coasterAtStation,
   findNearestSeat,
   findNpcHazard,
   getAvatar,
   getWeapon,
   moveWithCollision,
+  rideSeatAt,
   type AnimState,
 } from '@office/shared';
 import {
@@ -125,12 +128,16 @@ function occupiedSeats(meId: string | undefined): Set<string> {
   for (const p of Object.values(useGame.getState().players)) {
     if (p.seatId && p.sessionId !== meId) set.add(p.seatId);
   }
+  // 車還在半路上就不提示上車（伺服端也會擋，這裡只是別讓提示閃出來）
+  if (!coasterAtStation(Date.now())) for (const seat of SEATS) if (seat.ride?.kind === 'coaster') set.add(seat.id);
   return set;
 }
 
 export function LocalPlayer() {
   const me = useGame((s) => s.me);
   const group = useRef<Group>(null);
+  /** 搭雲霄飛車時角色要跟著軌道俯仰（名牌掛在外層，不跟著斜） */
+  const tilt = useRef<Group>(null);
   const keys = useKeyboard();
   const animRef = useRef<AnimState>('idle');
   const lastSent = useRef(0);
@@ -311,10 +318,23 @@ export function LocalPlayer() {
         sendStand();
         standPending.current = true;
       }
-      const seatAnim = SEAT_BY_ID.get(local.seatId)?.anim ?? 'sit';
+      const seat = SEAT_BY_ID.get(local.seatId);
+      const seatAnim = seat?.anim ?? 'sit';
       local.anim = seatAnim;
       animRef.current = seatAnim;
-      g.position.set(local.x, 0, local.z);
+      // 旋轉木馬：位置每幀自己用同一條式子算，才不會跟著 20Hz 的同步一格一格跳。
+      // 順手寫回 local，讓相機也跟著轉
+      const ride = seat ? rideSeatAt(seat, Date.now()) : null;
+      if (ride) {
+        local.x = ride.x;
+        local.z = ride.z;
+        local.rotY = ride.rotY;
+        g.position.set(ride.x, ride.y, ride.z);
+        if (tilt.current) tilt.current.rotation.x = -ride.pitch;
+      } else {
+        g.position.set(local.x, 0, local.z);
+        if (tilt.current && tilt.current.rotation.x !== 0) tilt.current.rotation.x = 0;
+      }
       g.rotation.y = local.rotY;
       useGame.getState().setNearSeat(null);
       return;
@@ -420,7 +440,9 @@ export function LocalPlayer() {
 
   return (
     <group ref={group}>
-      <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+      <group ref={tilt}>
+        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+      </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       <NameTag sessionId={me.sessionId} isMe />
       {/* 腳下標示圈 */}

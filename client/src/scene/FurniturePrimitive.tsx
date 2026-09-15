@@ -304,6 +304,8 @@ export function FurniturePrimitive({ f }: { f: FurnitureDef }) {
       return <Rack f={f} />;
     // 遊戲區設施只提供碰撞，外觀由 Playground 以 playground.glb 繪製
     case 'playground':
+    // 遊樂園設施（含隱形擋塊）同理，外觀由 Park 繪製
+    case 'park':
       return null;
     case 'treadmill':
     case 'gymmat':

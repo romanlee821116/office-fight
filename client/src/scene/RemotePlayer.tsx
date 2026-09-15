@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Group } from 'three';
-import { getAvatar, type AnimState } from '@office/shared';
+import { SEAT_BY_ID, getAvatar, rideSeatAt, type AnimState } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
 import { FireFX } from './FireFX';
@@ -24,16 +24,30 @@ function lerpAngle(a: number, b: number, t: number): number {
 
 export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
   const group = useRef<Group>(null);
+  const tilt = useRef<Group>(null);
   const animRef = useRef<AnimState>('idle');
   const avatar = getAvatar(avatarId);
   const weaponId = useGame((s) => s.players[sessionId]?.weaponId ?? '');
   const carrying = useGame((s) => Object.values(s.pets).some((p) => p.carrierId === sessionId));
   const onFire = useGame((s) => s.players[sessionId]?.onFire ?? false);
+  const seatId = useGame((s) => s.players[sessionId]?.seatId ?? '');
 
   useFrame((_state, dt) => {
     const g = group.current;
     const t = remoteTargets.get(sessionId);
     if (!g || !t) return;
+
+    // 旋轉木馬上的人不吃網路插補：用跟伺服端同一條式子直接算，畫面才會平順且與木馬對齊
+    const ride = seatId ? rideSeatAt(SEAT_BY_ID.get(seatId)!, Date.now()) : null;
+    if (ride) {
+      g.position.set(ride.x, ride.y, ride.z);
+      g.rotation.y = ride.rotY;
+      if (tilt.current) tilt.current.rotation.x = -ride.pitch;
+      animRef.current = t.anim;
+      t.fresh = true; // 下車時直接 snap 回伺服端位置
+      return;
+    }
+    if (tilt.current && tilt.current.rotation.x !== 0) tilt.current.rotation.x = 0;
 
     if (t.fresh) {
       g.position.set(t.x, 0, t.z);
@@ -62,7 +76,9 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
 
   return (
     <group ref={group}>
-      <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+      <group ref={tilt}>
+        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+      </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       <NameTag sessionId={sessionId} />
     </group>

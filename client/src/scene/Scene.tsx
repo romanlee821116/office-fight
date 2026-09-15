@@ -8,6 +8,7 @@ import { SceneEnvironment } from './Environment';
 import { LocalPlayer } from './LocalPlayer';
 import { Npc } from './Npc';
 import { Office } from './Office';
+import { Park } from './Park';
 import { Pets } from './Pets';
 import { PickleCourt } from './PickleCourt';
 import { Playground } from './Playground';
@@ -56,6 +57,7 @@ export function Scene() {
       <RemotePlayers />
       <Pets />
       <Npc />
+      <Park />
       <Stove />
       <Oven />
       <Pickups />

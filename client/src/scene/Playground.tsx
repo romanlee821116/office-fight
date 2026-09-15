@@ -10,6 +10,8 @@ import {
   PLAY_MAX_Z,
   PLAY_MIN_X,
   PLAY_MIN_Z,
+  PARK_GATE_W,
+  PARK_GATE_X,
   type FurnitureDef,
 } from '@office/shared';
 import { beatNow, seesawTilt, swingRideAngle } from './dances';
@@ -19,6 +21,9 @@ import { usePlaygroundPart, type PlaygroundPartId } from './playgroundModel';
 
 const PLAY_W = PLAY_MAX_X - PLAY_MIN_X;
 const PLAY_D = PLAY_MAX_Z - PLAY_MIN_Z;
+/** 通往遊樂園的缺口兩端 */
+const GATE_MIN = PARK_GATE_X - PARK_GATE_W / 2;
+const GATE_MAX = PARK_GATE_X + PARK_GATE_W / 2;
 
 /** 設施的位置與朝向一律從家具表讀，才不會跟碰撞盒與座位表對不上 */
 const BY_ID = new Map(FURNITURE.map((f) => [f.id, f]));
@@ -121,7 +126,9 @@ export function Playground() {
       {/* 圍籬三面；靠露台那一側（z = PLAY_MIN_Z）開放通行 */}
       <Fence x={PLAY_MIN_X + 0.1} z={PLAY_CENTER_Z} w={0.06} d={PLAY_D} />
       <Fence x={PLAY_MAX_X - 0.1} z={PLAY_CENTER_Z} w={0.06} d={PLAY_D} />
-      <Fence x={PLAY_CENTER_X} z={PLAY_MAX_Z - 0.1} w={PLAY_W} d={0.06} />
+      {/* 南側圍籬留一個缺口通往遊樂園，兩側各一段 */}
+      <Fence x={(PLAY_MIN_X + GATE_MIN) / 2} z={PLAY_MAX_Z - 0.1} w={GATE_MIN - PLAY_MIN_X} d={0.06} />
+      <Fence x={(GATE_MAX + PLAY_MAX_X) / 2} z={PLAY_MAX_Z - 0.1} w={PLAY_MAX_X - GATE_MAX} d={0.06} />
 
       <StaticPart partId="slide" furnitureId="slide-a" />
       <StaticPart partId="slide" furnitureId="slide-b" />

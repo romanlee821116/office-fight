@@ -7,3 +7,4 @@ export * from './data/furniture';
 export * from './data/seats';
 export * from './data/weapons';
 export * from './data/pets';
+export * from './data/coaster';

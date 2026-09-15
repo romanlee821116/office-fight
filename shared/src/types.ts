@@ -102,6 +102,11 @@ export interface Seat {
   standAt?: { x: number; z: number };
   /** 一次性體驗（溜滑梯）：坐上去幾毫秒後由伺服端自動起身 */
   rideMs?: number;
+  /**
+   * 會移動的座位（旋轉木馬）：x / z 只是上車點，實際位置每刻由 rideSeatAt() 算出來。
+   * 前後端用同一條式子，所以不必為了同步多傳任何狀態。
+   */
+  ride?: { kind: 'carousel' | 'coaster'; index: number };
 }
 
 export interface SitPayload {
@@ -388,7 +393,9 @@ export type FurnitureType =
   | 'bench'
   | 'rack'
   /** 遊戲區設施：只提供碰撞，外觀由 Playground 以 playground.glb 繪製 */
-  | 'playground';
+  | 'playground'
+  /** 遊樂園設施：只提供碰撞，外觀由 Park 以 park/ 底下的模型繪製 */
+  | 'park';
 
 export interface FurnitureDef {
   id: string;

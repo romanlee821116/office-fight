@@ -1,5 +1,6 @@
 import { resolvePosition, type Vec2 } from '../collision';
-import { PLAYGROUND, SEAT_INTERACT_DISTANCE, SEAT_STAND_OFFSET } from '../constants';
+import { CAROUSEL, COASTER, PLAYGROUND, SEAT_INTERACT_DISTANCE, SEAT_STAND_OFFSET } from '../constants';
+import { coasterCarAt } from './coaster';
 import type { AnimState, FurnitureDef, Seat } from '../types';
 import { FURNITURE } from './furniture';
 
@@ -70,6 +71,93 @@ function playgroundSeats(f: FurnitureDef): Seat[] {
   return [];
 }
 
+/**
+ * 旋轉木馬的木馬位。六匹木馬共用同一個上車點（就像排隊上車），
+ * findNearestSeat 會自動挑一個還沒人坐的；實際位置每刻由 rideSeatAt 算。
+ */
+function carouselSeats(): Seat[] {
+  const bx = CAROUSEL.x + CAROUSEL.boardRadius;
+  const bz = CAROUSEL.z;
+  return Array.from({ length: CAROUSEL.seatCount }, (_, index) => ({
+    id: `carousel:${index}`,
+    furnitureId: 'carousel',
+    x: bx,
+    z: bz,
+    // 上車時面向木馬中心（-X 方向）
+    rotY: -Math.PI / 2,
+    anim: 'sit' as AnimState,
+    label: '騎旋轉木馬',
+    standAt: { x: bx, z: bz },
+    ride: { kind: 'carousel' as const, index },
+  }));
+}
+
+/**
+ * 雲霄飛車的座位：一列三節車廂，共用車站月台旁的同一個上車點。
+ * 只有車停在站上時才上得去（由伺服端把關）。
+ */
+function coasterSeats(): Seat[] {
+  const bx = COASTER.startX + 2;
+  const bz = COASTER.startZ + 1.5;
+  return Array.from({ length: COASTER.carCount }, (_, index) => ({
+    id: `coaster:${index}`,
+    furnitureId: 'coaster-station',
+    x: bx,
+    z: bz,
+    // 面向月台旁的軌道（-Z）
+    rotY: Math.PI,
+    anim: 'sit' as AnimState,
+    label: '搭雲霄飛車',
+    standAt: { x: bx, z: bz },
+    ride: { kind: 'coaster' as const, index },
+  }));
+}
+
+/**
+ * 會動的座位在某個時刻的位置、高度與朝向。時間基準是 Date.now()，
+ * 跟牆上時鐘（beatNow）同一條軸，所以伺服端與每台前端算出來的角度一致，
+ * 不需要為了同步多傳任何狀態。
+ */
+/**
+ * 第 index 匹木馬在某時刻的角度。轉盤往正角度轉，馬頭才是朝著前進方向；
+ * 前端的 Carousel 用同一個 carouselTurn() 轉模型，人與馬因此永遠對齊。
+ */
+export function carouselTurn(now: number): number {
+  return (((now / 1000) % CAROUSEL.turnSec) / CAROUSEL.turnSec) * Math.PI * 2;
+}
+
+export function carouselSeatAngle(index: number, now: number): number {
+  return CAROUSEL.seatAngle + (index / CAROUSEL.seatCount) * Math.PI * 2 + carouselTurn(now);
+}
+
+/** 會動的座位當下的姿態；pitch 為俯仰，正值為爬升 */
+export interface RidePose {
+  x: number;
+  y: number;
+  z: number;
+  rotY: number;
+  pitch: number;
+}
+
+export function rideSeatAt(seat: Seat, now: number): RidePose | null {
+  if (seat.ride?.kind === 'carousel') {
+    const a = carouselSeatAngle(seat.ride.index, now);
+    return {
+      x: CAROUSEL.x + Math.sin(a) * CAROUSEL.seatRadius,
+      z: CAROUSEL.z + Math.cos(a) * CAROUSEL.seatRadius,
+      y: CAROUSEL.seatY,
+      // 角度遞增，前進方向（也就是馬頭朝的方向）是 a + 90°
+      rotY: a + Math.PI / 2,
+      pitch: 0,
+    };
+  }
+  if (seat.ride?.kind === 'coaster') {
+    const car = coasterCarAt(seat.ride.index, now);
+    return { x: car.x, z: car.z, y: car.y + COASTER.riderY, rotY: car.yaw, pitch: car.pitch };
+  }
+  return null;
+}
+
 function seatAt(furnitureId: string, suffix: string, x: number, z: number, rotY: number, anim: AnimState = 'sit', label = '坐下'): Seat {
   return { id: suffix ? `${furnitureId}:${suffix}` : furnitureId, furnitureId, x, z, rotY, anim, label };
 }
@@ -93,8 +181,12 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   // 深蹲架：站到橫桿下深蹲
   if (f.id === 'squat-rack') return [seatAt(f.id, '', f.x, f.z - 0.15, Math.PI, 'squat', '深蹲')];
   if (f.type === 'playground') return playgroundSeats(f);
+  if (f.id === 'carousel') return carouselSeats();
   return [];
 });
+
+// 雲霄飛車的座位不對應任何碰撞家具（軌道架在頭頂上），直接補進座位表
+SEATS.push(...coasterSeats());
 
 export const SEAT_BY_ID = new Map(SEATS.map((s) => [s.id, s]));
 
