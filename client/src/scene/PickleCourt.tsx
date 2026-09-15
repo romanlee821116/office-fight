@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import type { Group, Mesh } from 'three';
 import { COURT, INDOOR_MAX_X, ROOM_MAX_X, ROOM_MAX_Z, ROOM_MIN_Z } from '@office/shared';
 import { courtBall } from './runtime';
+import { useSceneTheme } from './SceneTheme';
 
 const TERRACE_W = ROOM_MAX_X - INDOOR_MAX_X;
 const TERRACE_CX = (INDOOR_MAX_X + ROOM_MAX_X) / 2;
@@ -145,12 +146,13 @@ function Slot({ x, z, color }: { x: number; z: number; color: string }) {
 
 /** 戶外露台與匹克球場：混凝土地、圍籬、球場漆線、球網、報名點、飛行球 */
 export function PickleCourt() {
+  const { palette } = useSceneTheme();
   return (
     <group>
-      {/* 露台混凝土地面 */}
+      {/* 露台地面（顏色跟著場景主題） */}
       <mesh position={[TERRACE_CX, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[TERRACE_W, ROOM_MAX_Z - ROOM_MIN_Z]} />
-        <meshStandardMaterial color="#C6CBD1" />
+        <meshStandardMaterial color={palette.terrace} />
       </mesh>
 
       {/* 圍籬：後、右、前三側（與健身房相接的一側是玻璃隔間） */}

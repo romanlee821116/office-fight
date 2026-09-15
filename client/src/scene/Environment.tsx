@@ -17,6 +17,7 @@ import { INDOOR_MAX_X, ROOM_MAX_Z, ROOM_MIN_X, ROOM_MIN_Z } from '@office/shared
 import { useGame } from '../store/useGame';
 import { paletteAt } from '../lib/daynight';
 import { weatherInfo } from '../lib/weather';
+import { getTheme } from './themes';
 
 // 測試覆寫：?hour=19.5 強制時刻、?weather=95 強制天氣代碼
 const params = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null;
@@ -191,8 +192,10 @@ export function SceneEnvironment() {
     const targetBg = pal.bg.clone().lerp(OVERCAST_BG, info.overcast * 0.5);
     const targetDir = pal.dir * (1 - 0.55 * info.overcast);
     const targetAmb = pal.amb * (1 - 0.2 * info.overcast);
-    const targetFogNear = info.foggy ? 16 : info.precip !== 'none' ? 34 : 45;
-    const targetFogFar = info.foggy ? 42 : info.precip !== 'none' ? 72 : 90;
+    // 有遠景的場景主題把霧推遠一點（大霧天仍然近）
+    const fogScale = info.foggy ? 1 : (getTheme(useGame.getState().sceneTheme).fogScale ?? 1);
+    const targetFogNear = (info.foggy ? 16 : info.precip !== 'none' ? 34 : 45) * fogScale;
+    const targetFogFar = (info.foggy ? 42 : info.precip !== 'none' ? 72 : 90) * fogScale;
 
     const c = cur.current;
     const k = 1 - Math.exp(-dt * 1.5);

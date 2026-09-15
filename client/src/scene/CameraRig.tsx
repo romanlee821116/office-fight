@@ -27,6 +27,7 @@ export function CameraRig() {
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
+      rig.tour = null;
       dragging = true;
       lastX = e.clientX;
       lastY = e.clientY;
@@ -47,10 +48,12 @@ export function CameraRig() {
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      rig.tour = null;
       rig.distance = clamp(rig.distance + e.deltaY * ZOOM_SPEED, CAMERA.distanceMin, CAMERA.distanceMax);
     };
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2) {
+        rig.tour = null;
         const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         if (pinchDist) {
           rig.distance = clamp(rig.distance - (d - pinchDist) * 0.03, CAMERA.distanceMin, CAMERA.distanceMax);
@@ -80,7 +83,16 @@ export function CameraRig() {
     };
   }, [gl]);
 
-  useFrame(() => {
+  useFrame((_state, dt) => {
+    // 切換場景後的觀景運鏡：平滑靠近目標角度，夠近就結束
+    const tour = rig.tour;
+    if (tour) {
+      const k = 1 - Math.exp(-Math.min(dt, 0.05) * 4);
+      rig.pitch += (tour.pitch - rig.pitch) * k;
+      rig.distance += (tour.distance - rig.distance) * k;
+      if (Math.abs(rig.pitch - tour.pitch) < 0.004 && Math.abs(rig.distance - tour.distance) < 0.06) rig.tour = null;
+    }
+
     // 決定跟隨目標：聚焦中的玩家或本地玩家
     let tx = local.x;
     let tz = local.z;

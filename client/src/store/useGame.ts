@@ -4,6 +4,7 @@ import { BUBBLE_DURATION_MS, CHAT_HISTORY } from '@office/shared';
 export type Phase = 'lobby' | 'connecting' | 'office' | 'reconnecting';
 
 const WEATHER_FX_KEY = 'office:weatherFx';
+const SCENE_THEME_KEY = 'office:sceneTheme';
 
 /** 即時天氣效果的個人偏好，預設開啟 */
 function readWeatherEnabled(): boolean {
@@ -11,6 +12,15 @@ function readWeatherEnabled(): boolean {
     return localStorage.getItem(WEATHER_FX_KEY) !== '0';
   } catch {
     return true;
+  }
+}
+
+/** 場景主題的個人偏好，預設原本的辦公室（未知 id 由 getTheme 退回預設） */
+function readSceneTheme(): string {
+  try {
+    return localStorage.getItem(SCENE_THEME_KEY) ?? 'office';
+  } catch {
+    return 'office';
   }
 }
 
@@ -114,6 +124,10 @@ interface GameState {
   weather: { code: number; temp: number; isDay: boolean };
   /** 是否套用即時天氣效果（個人設定，存 localStorage，預設開） */
   weatherEnabled: boolean;
+  /** 場景主題 id（只影響自己的畫面，存 localStorage） */
+  sceneTheme: string;
+  /** 主題模型載入中（HUD 顯示提示） */
+  sceneThemeLoading: boolean;
   /** 匹克球比賽狀態（伺服端同步） */
   court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number };
   /** 本地玩家附近的報名點 */
@@ -157,6 +171,8 @@ interface GameState {
   setStove: (stove: { foodId: string; stage: string }) => void;
   setWeather: (weather: { code: number; temp: number; isDay: boolean }) => void;
   setWeatherEnabled: (enabled: boolean) => void;
+  setSceneTheme: (id: string) => void;
+  setSceneThemeLoading: (loading: boolean) => void;
   setCourt: (court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number }) => void;
   setNearCourtSlot: (slot: 'A' | 'B' | null) => void;
   upsertPickup: (pickup: PickupInfo) => void;
@@ -191,6 +207,8 @@ const initial = {
   stove: { foodId: '', stage: '' },
   weather: { code: -1, temp: 0, isDay: true },
   weatherEnabled: readWeatherEnabled(),
+  sceneTheme: readSceneTheme(),
+  sceneThemeLoading: false,
   court: { status: 'idle', aId: '', bId: '', scoreA: 0, scoreB: 0 },
   nearCourtSlot: null,
   pickups: {},
@@ -264,6 +282,15 @@ export const useGame = create<GameState>((set) => ({
     }
     set({ weatherEnabled });
   },
+  setSceneTheme: (sceneTheme) => {
+    try {
+      localStorage.setItem(SCENE_THEME_KEY, sceneTheme);
+    } catch {
+      // 忽略儲存失敗
+    }
+    set({ sceneTheme });
+  },
+  setSceneThemeLoading: (sceneThemeLoading) => set((s) => (s.sceneThemeLoading === sceneThemeLoading ? s : { sceneThemeLoading })),
   upsertPickup: (pickup) => set((s) => ({ pickups: { ...s.pickups, [pickup.id]: pickup } })),
   removePickup: (id) =>
     set((s) => {
@@ -292,5 +319,6 @@ export const useGame = create<GameState>((set) => ({
     }, 4000);
   },
 
-  reset: () => set({ ...initial }),
+  // 回大廳重置時保留個人偏好，否則會退回進場當下的 localStorage 值
+  reset: () => set((s) => ({ ...initial, weatherEnabled: s.weatherEnabled, sceneTheme: s.sceneTheme })),
 }));

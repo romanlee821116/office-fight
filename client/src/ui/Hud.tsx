@@ -8,6 +8,7 @@ import { IdleWarning } from './IdleWarning';
 import { FightPanel } from './FightPanel';
 import { InteractionBar } from './InteractionBar';
 import { PlayerList } from './PlayerList';
+import { SceneSwitcher } from './SceneSwitcher';
 import { StatusEditor } from './StatusEditor';
 
 export function Hud() {
@@ -49,6 +50,7 @@ export function Hud() {
                 </span>
               )}
             </div>
+            <SceneSwitcher />
           </div>
           <FightPanel />
           <CourtBanner />

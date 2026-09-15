@@ -1,6 +1,7 @@
 import { Canvas } from '@react-three/fiber';
 import { ContactShadows, Stats } from '@react-three/drei';
 import { useGame } from '../store/useGame';
+import { Backdrop } from './Backdrop';
 import { BloodParticles } from './BloodParticles';
 import { CameraRig } from './CameraRig';
 import { SceneEnvironment } from './Environment';
@@ -12,6 +13,7 @@ import { Stove } from './Stove';
 import { Pickups } from './Pickups';
 import { Projectiles } from './Projectiles';
 import { RemotePlayer } from './RemotePlayer';
+import { SceneThemeProvider } from './SceneTheme';
 
 function RemotePlayers() {
   const players = useGame((s) => s.players);
@@ -40,8 +42,11 @@ export function Scene() {
       <fog attach="fog" args={['#DFE8F0', 45, 90]} />
       <SceneEnvironment />
 
-      <Office />
-      <PickleCourt />
+      <SceneThemeProvider>
+        <Backdrop />
+        <Office />
+        <PickleCourt />
+      </SceneThemeProvider>
       <ContactShadows position={[0, 0.01, 0]} opacity={0.25} scale={40} blur={2} far={4} resolution={512} frames={1} />
       <LocalPlayer />
       <RemotePlayers />

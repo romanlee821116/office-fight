@@ -230,7 +230,8 @@ export const BUBBLE_DURATION_MS = 5000;
 
 /** 相機 */
 export const CAMERA = {
-  pitchMin: (20 * Math.PI) / 180,
+  /** 放寬到 8°：讓玩家能把鏡頭抬到接近水平，看見場景主題的天際線 */
+  pitchMin: (8 * Math.PI) / 180,
   pitchMax: (60 * Math.PI) / 180,
   pitchDefault: (35 * Math.PI) / 180,
   yawDefault: Math.PI / 4,

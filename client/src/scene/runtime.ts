@@ -169,7 +169,17 @@ export const rig = {
   /** 短暫聚焦某玩家（在線名單點擊） */
   focusSessionId: null as string | null,
   focusUntil: 0,
+  /**
+   * 切換場景主題後把鏡頭平滑抬到觀景角度。玩家一拖曳或縮放就取消，
+   * 之後完全交還控制權（不會再強制拉回）。
+   */
+  tour: null as { pitch: number; distance: number } | null,
 };
+
+/** 觀景視角：俯角 10°、距離 22，剛好讓地平線與地標進到畫面上半部 */
+export function startSceneTour(): void {
+  rig.tour = { pitch: (10 * Math.PI) / 180, distance: 22 };
+}
 
 export function focusPlayer(sessionId: string, durationMs = 2500): void {
   rig.focusSessionId = sessionId;
@@ -204,4 +214,5 @@ export function resetRuntime(): void {
   rig.target.set(SPAWN_POINT.x, 1, SPAWN_POINT.z);
   rig.focusSessionId = null;
   rig.focusUntil = 0;
+  rig.tour = null;
 }
