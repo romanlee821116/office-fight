@@ -43,6 +43,12 @@ export interface PlayerInfo {
   ammo: number;
 }
 
+/** 路人 NPC 的名牌資料；位置與朝向不進 store，走 runtime 的 npcTarget 逐幀插補 */
+export interface NpcInfo {
+  hp: number;
+  anim: string;
+}
+
 export interface PetInfo {
   id: string;
   petType: string;
@@ -140,6 +146,8 @@ interface GameState {
   pickups: Record<string, PickupInfo>;
   /** 辦公室寵物 */
   pets: Record<string, PetInfo>;
+  /** 路人 NPC（場上固定一位） */
+  npc: NpcInfo;
   /** 本地玩家是否坐著 */
   seated: boolean;
   /** 本地玩家倒地的復活時間（Date.now 基準），null 代表存活 */
@@ -183,6 +191,7 @@ interface GameState {
   setNearCourtSlot: (slot: 'A' | 'B' | null) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
+  setNpc: (npc: NpcInfo) => void;
   upsertPet: (pet: PetInfo) => void;
   removePet: (id: string) => void;
   setSeated: (seated: boolean) => void;
@@ -221,6 +230,7 @@ const initial = {
   nearCourtSlot: null,
   pickups: {},
   pets: {},
+  npc: { hp: 0, anim: 'idle' },
   seated: false,
   deadUntil: null,
   duelInvite: null,
@@ -308,6 +318,7 @@ export const useGame = create<GameState>((set) => ({
       delete pickups[id];
       return { pickups };
     }),
+  setNpc: (npc) => set({ npc }),
   upsertPet: (pet) => set((s) => ({ pets: { ...s.pets, [pet.id]: pet } })),
   removePet: (id) =>
     set((s) => {

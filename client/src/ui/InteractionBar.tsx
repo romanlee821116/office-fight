@@ -1,4 +1,4 @@
-import { DANCES, EAT, EMOTES, SEAT_BY_ID, getPet, getWeapon } from '@office/shared';
+import { DANCES, EMOTES, SEAT_BY_ID, getPet, getWeapon } from '@office/shared';
 import {
   eatHeldFood,
   sendAttack,
@@ -100,10 +100,10 @@ export function InteractionBar() {
     });
 
   // R：吃掉手上的食物
-  if (holdingFood && !dead) actions.push({ hint: 'R', label: `吃掉${weapon.name}（回 ${weapon.heal ?? EAT.healHp} 血）`, onClick: eatHeldFood });
+  if (holdingFood && !dead) actions.push({ hint: 'R', label: `吃掉${weapon.name}`, onClick: eatHeldFood });
 
   // Q：放下手上的物品（球拍是比賽期間配發的，不能丟）
-  if (weapon && weapon.id !== 'paddle' && !dead) actions.push({ hint: 'Q', label: `放下${weapon.name}`, onClick: sendDrop });
+  if (weapon && weapon.id !== 'paddle' && !dead) actions.push({ hint: 'Q', label: '放下', onClick: sendDrop });
 
   return (
     <div className="pointer-events-none flex flex-col items-center gap-2">

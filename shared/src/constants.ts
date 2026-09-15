@@ -135,6 +135,45 @@ export const PET = {
 };
 
 /**
+ * 辦公室路人：固定一位，伺服端 AI 隨機走動，附近有人時會轉過去說一句話。
+ * 可以被攻擊（打倒後躺一會兒再站起來），但他不會攻擊任何人。
+ */
+export const NPC = {
+  /** 場上唯一，前端拿它當名牌與對話泡泡的 key */
+  id: 'npc-passerby',
+  name: '丁eff',
+  /** 借用玩家的角色模型 */
+  avatarId: 'chou',
+  maxHp: 1000,
+  radius: 0.35,
+  walkSpeed: 1.1,
+  aiTickMs: 100,
+  /** 停下來發呆的時間範圍 */
+  idleMs: [2500, 6000] as [number, number],
+  /** 走一段路的放棄時限 */
+  walkTimeoutMs: 12000,
+  /** 每次散步的最遠距離 */
+  wanderDist: 8,
+  /** 被打後的僵直 */
+  staggerMs: 600,
+  /** 倒下到再站起來的間隔 */
+  respawnMs: 10000,
+  /** 活動範圍（與寵物相同，含健身房與戶外露台） */
+  area: { minX: -11, maxX: 39, minZ: -7, maxZ: 7 },
+  /** 名牌高度 */
+  tagHeight: 2.1,
+  /** 多近才算「旁邊有人可以講話」 */
+  speakRange: 7,
+  /** 兩句話之間的間隔 */
+  speakGapMs: [3000, 7000] as [number, number],
+  /** 說話時揮手的動作長度 */
+  speakAnimMs: 1200,
+};
+
+/** 路人的台詞，每次隨機挑一句（不會連說同一句） */
+export const NPC_LINES = ['我支持你們，但JOE說不行', '我支持你們的支持', '我支持你說話', '我支持你們，但我真沒錢'];
+
+/**
  * 廚房瓦斯爐：拿著食物按 E 放上去煎，放太久會燒起來。
  * 位置對應 furniture.ts 的 kitchen-run（中心 x -11.52, z 4.84）中 dx 1.29 的瓦斯爐。
  */

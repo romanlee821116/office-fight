@@ -5,6 +5,8 @@ import {
   DUEL,
   FIGHT,
   IDLE,
+  NPC,
+  NPC_LINES,
   PET,
   PETS,
   PET_EAT_MS,
@@ -58,7 +60,7 @@ import {
   type WeaponDef,
 } from '@office/shared';
 import { logger } from '../logger';
-import { OfficeState, Pet, Pickup, Player } from './schema';
+import { Npc, OfficeState, Pet, Pickup, Player } from './schema';
 
 /** 拳頭 */
 const FIST: WeaponDef = {
@@ -114,6 +116,20 @@ interface PetAi {
   staggerUntil: number;
 }
 
+interface NpcAi {
+  mode: 'idle' | 'walk';
+  until: number;
+  tx: number;
+  tz: number;
+  staggerUntil: number;
+  /** 下次可以開口的時間 */
+  nextSpeakAt: number;
+  /** 揮手動作的結束時間 */
+  speakUntil: number;
+  /** 上一句的索引，避免連說同一句 */
+  lastLine: number;
+}
+
 function randIn([min, max]: [number, number]): number {
   return min + Math.random() * (max - min);
 }
@@ -148,6 +164,8 @@ export class OfficeRoom extends Room<OfficeState> {
   private projectileSeq = 0;
   private petSeq = 0;
   private petAi = new Map<string, PetAi>();
+  private npcDebug = process.env.NPC_DEBUG === '1';
+  private npcAi: NpcAi = { mode: 'idle', until: 0, tx: 0, tz: 0, staggerUntil: 0, nextSpeakAt: 0, speakUntil: 0, lastLine: -1 };
   private stoveBurnTimer: { clear(): void } | null = null;
   /** 匹克球：進行中那一拍的資訊（落地判定用） */
   private courtShot: {
@@ -223,6 +241,8 @@ export class OfficeRoom extends Room<OfficeState> {
 
     for (let i = 0; i < PET.count; i++) this.spawnPet(false);
     this.clock.setInterval(() => this.tickPets(), PET.aiTickMs);
+    this.placeNpc();
+    this.clock.setInterval(() => this.tickNpc(), NPC.aiTickMs);
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
 
     void this.refreshWeather();
@@ -502,9 +522,16 @@ export class OfficeRoom extends Room<OfficeState> {
         bestDist = dist;
       }
       if (!target) {
-        // 沒有玩家目標時看看有沒有寵物
+        // 沒有玩家目標時看看有沒有寵物或路人，打比較近的那個
         const pet = this.findPetTarget(attacker, fx, fz, weapon.range);
-        if (pet) {
+        const petDist = pet ? Math.hypot(pet.x - attacker.x, pet.z - attacker.z) : weapon.range;
+        const npc = this.findNpcTarget(attacker, fx, fz, petDist);
+        if (npc) {
+          const dx = npc.x - attacker.x;
+          const dz = npc.z - attacker.z;
+          const len = Math.hypot(dx, dz) || 1;
+          this.applyHitToNpc(attacker, dx / len, dz / len, weapon, len * 0.6);
+        } else if (pet) {
           const dx = pet.x - attacker.x;
           const dz = pet.z - attacker.z;
           const len = Math.hypot(dx, dz) || 1;
@@ -547,6 +574,22 @@ export class OfficeRoom extends Room<OfficeState> {
         if (side > PICKUPS.corridorHalfWidth) continue;
         petTarget = pet;
         travel = along;
+      }
+    }
+
+    // 走廊內沒有玩家也沒有寵物時，看看路人在不在線上
+    let npcHit = false;
+    if (!target && !petTarget && !attacker.duelWith) {
+      const npc = this.state.npc;
+      if (npc.anim !== 'dead') {
+        const dx = npc.x - attacker.x;
+        const dz = npc.z - attacker.z;
+        const along = dx * fx + dz * fz;
+        const side = Math.abs(dx * fz - dz * fx);
+        if (along > 0.2 && along <= travel && side <= PICKUPS.corridorHalfWidth) {
+          npcHit = true;
+          travel = along;
+        }
       }
     }
 
@@ -595,6 +638,10 @@ export class OfficeRoom extends Room<OfficeState> {
           landX = pet.x;
           landZ = pet.z;
         }
+      } else if (shooter && npcHit && this.state.npc.anim !== 'dead') {
+        this.applyHitToNpc(shooter, fx, fz, weapon, 0);
+        landX = this.state.npc.x;
+        landZ = this.state.npc.z;
       }
       // 丟出去的食物落地後可以再撿
       if (weapon.kind === 'throw') this.addPickup(weapon.id, landX, landZ);
@@ -863,6 +910,7 @@ export class OfficeRoom extends Room<OfficeState> {
     area: { minX: number; maxX: number; minZ: number; maxZ: number },
     tries: number,
     around?: { x: number; z: number; maxDist: number },
+    radius = PET.radius,
   ): { x: number; z: number } | null {
     for (let i = 0; i < tries; i++) {
       let raw: { x: number; z: number };
@@ -879,7 +927,7 @@ export class OfficeRoom extends Room<OfficeState> {
           z: area.minZ + Math.random() * (area.maxZ - area.minZ),
         };
       }
-      const pos = resolvePosition(raw.x, raw.z, PET.radius);
+      const pos = resolvePosition(raw.x, raw.z, radius);
       // 被家具推開太多代表落在家具裡
       if (Math.hypot(pos.x - raw.x, pos.z - raw.z) > 0.05) continue;
       return pos;
@@ -979,6 +1027,179 @@ export class OfficeRoom extends Room<OfficeState> {
         this.setPetIdle(ai, pet, now);
       }
     }
+  }
+
+  /** 把路人放到場上的隨機空位；開場與被打倒後重新站起來都走這裡 */
+  private placeNpc(): void {
+    const pos = this.randomOpenPoint(NPC.area, 30, undefined, NPC.radius) ?? { x: SPAWN_POINT.x, z: SPAWN_POINT.z };
+    const npc = this.state.npc;
+    npc.x = pos.x;
+    npc.z = pos.z;
+    npc.rotY = Math.random() * Math.PI * 2;
+    npc.anim = 'idle';
+    npc.hp = NPC.maxHp;
+    const now = Date.now();
+    this.npcAi = {
+      mode: 'idle',
+      until: now + randIn(NPC.idleMs),
+      tx: pos.x,
+      tz: pos.z,
+      staggerUntil: 0,
+      nextSpeakAt: now + randIn(NPC.speakGapMs),
+      speakUntil: 0,
+      lastLine: this.npcAi.lastLine,
+    };
+  }
+
+  private setNpcIdle(now: number): void {
+    this.npcAi.mode = 'idle';
+    this.npcAi.until = now + randIn(NPC.idleMs);
+    this.state.npc.anim = 'idle';
+  }
+
+  /** 最近的說話對象：活著的玩家，且在 speakRange 內 */
+  private nearestListener(): Player | null {
+    const npc = this.state.npc;
+    let best: Player | null = null;
+    let bestDist = NPC.speakRange;
+    for (const p of this.state.players.values()) {
+      if (p.hp <= 0) continue;
+      const dist = Math.hypot(p.x - npc.x, p.z - npc.z);
+      if (dist > bestDist) continue;
+      best = p;
+      bestDist = dist;
+    }
+    return best;
+  }
+
+  /** 隨機挑一句台詞，不會跟上一句重複 */
+  private nextNpcLine(): string {
+    const ai = this.npcAi;
+    let i = Math.floor(Math.random() * NPC_LINES.length);
+    if (NPC_LINES.length > 1 && i === ai.lastLine) i = (i + 1) % NPC_LINES.length;
+    ai.lastLine = i;
+    return NPC_LINES[i];
+  }
+
+  /** 路人 AI：走動 → 停頓，旁邊有人時轉過去講一句。他不會攻擊任何人 */
+  private tickNpc(): void {
+    const npc = this.state.npc;
+    const ai = this.npcAi;
+    const now = Date.now();
+
+    if (this.npcDebug && now % 1000 < NPC.aiTickMs) logger.info(`[npc] anim=${npc.anim} mode=${ai.mode} until=${ai.until - now} speak=${ai.nextSpeakAt - now} pos=${npc.x.toFixed(1)},${npc.z.toFixed(1)}`);
+    if (npc.anim === 'dead') return; // 躺著等 placeNpc 把他扶起來
+    if (now < ai.staggerUntil) return;
+    if (npc.anim === 'hit') npc.anim = 'idle'; // 僵直結束
+
+    // 講完話收手
+    if (npc.anim === 'wave' && now >= ai.speakUntil) npc.anim = 'idle';
+
+    // 說話：附近有人就停下來轉過去講一句；沒人就過幾秒再看
+    if (now >= ai.nextSpeakAt) {
+      const listener = this.nearestListener();
+      if (listener) {
+        ai.nextSpeakAt = now + randIn(NPC.speakGapMs);
+        ai.speakUntil = now + NPC.speakAnimMs;
+        ai.mode = 'idle';
+        ai.until = now + NPC.speakAnimMs;
+        npc.rotY = Math.atan2(listener.x - npc.x, listener.z - npc.z);
+        npc.anim = 'wave';
+        this.broadcast(Messages.npcSay, { text: this.nextNpcLine() });
+        return;
+      }
+      ai.nextSpeakAt = now + 2000;
+    }
+    if (now < ai.speakUntil) return; // 講話時站著不動
+
+    if (ai.mode === 'walk') {
+      const dx = ai.tx - npc.x;
+      const dz = ai.tz - npc.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 0.15 || now > ai.until) {
+        this.setNpcIdle(now);
+        return;
+      }
+      const step = (NPC.walkSpeed * NPC.aiTickMs) / 1000;
+      const next = moveWithCollision({ x: npc.x, z: npc.z }, (dx / dist) * step, (dz / dist) * step, NPC.radius);
+      // 幾乎沒前進代表被家具卡住，放棄這個目標
+      if (Math.hypot(next.x - npc.x, next.z - npc.z) < step * 0.2) {
+        this.setNpcIdle(now);
+        return;
+      }
+      npc.rotY = Math.atan2(dx / dist, dz / dist);
+      npc.x = next.x;
+      npc.z = next.z;
+      npc.anim = 'walk';
+      return;
+    }
+
+    if (now < ai.until) return;
+    const target = this.randomOpenPoint(NPC.area, 10, { x: npc.x, z: npc.z, maxDist: NPC.wanderDist }, NPC.radius);
+    if (!target) {
+      this.setNpcIdle(now);
+      return;
+    }
+    ai.mode = 'walk';
+    ai.tx = target.x;
+    ai.tz = target.z;
+    ai.until = now + NPC.walkTimeoutMs;
+  }
+
+  /** 攻擊錐內的路人（決鬥中打不到） */
+  private findNpcTarget(attacker: Player, fx: number, fz: number, range: number): Npc | null {
+    if (attacker.duelWith) return null;
+    const npc = this.state.npc;
+    if (npc.anim === 'dead') return null;
+    const dx = npc.x - attacker.x;
+    const dz = npc.z - attacker.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > range || dist < 1e-3) return null;
+    if ((dx * fx + dz * fz) / dist < FIGHT.coneCos) return null;
+    return npc;
+  }
+
+  /** 結算一次打在路人身上的攻擊：扣血、擊退、倒地。他不會還手 */
+  private applyHitToNpc(attacker: Player, dirX: number, dirZ: number, weapon: WeaponDef, impactOffset: number): void {
+    const npc = this.state.npc;
+    const now = Date.now();
+    const to = moveWithCollision({ x: npc.x, z: npc.z }, dirX * weapon.knockback, dirZ * weapon.knockback, NPC.radius);
+    const impactX = impactOffset ? attacker.x + dirX * impactOffset : npc.x;
+    const impactZ = impactOffset ? attacker.z + dirZ * impactOffset : npc.z;
+    npc.x = to.x;
+    npc.z = to.z;
+    npc.rotY = Math.atan2(-dirX, -dirZ); // 面向攻擊者
+    npc.hp = Math.max(0, npc.hp - weapon.damage);
+
+    const killed = npc.hp === 0;
+    if (killed) {
+      npc.anim = 'dead';
+      this.broadcastSystem(`🚶 ${attacker.name} 用${weapon.name}打倒了${NPC.name}…他等一下就會爬起來`);
+      logger.info(`路人被打倒 by ${attacker.name}`);
+      this.clock.setTimeout(() => this.placeNpc(), NPC.respawnMs);
+    } else {
+      npc.anim = 'hit';
+      this.npcAi.staggerUntil = now + NPC.staggerMs;
+      this.npcAi.mode = 'idle';
+      this.npcAi.until = now + NPC.staggerMs;
+      // 被打了就先閉嘴
+      this.npcAi.speakUntil = 0;
+      this.npcAi.nextSpeakAt = now + NPC.staggerMs + randIn(NPC.speakGapMs);
+    }
+
+    const event: HitEvent = {
+      attackerId: attacker.id,
+      targetId: NPC.id,
+      x: impactX,
+      z: impactZ,
+      dirX,
+      dirZ,
+      toX: to.x,
+      toZ: to.z,
+      hp: npc.hp,
+      killed,
+    };
+    this.broadcast(Messages.hit, event);
   }
 
   /** 玩家抱著的寵物（一次最多一隻） */

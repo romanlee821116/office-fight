@@ -280,6 +280,18 @@ export interface PetState {
   feedCount: number;
 }
 
+/**
+ * 路人 NPC 的前端讀取結構（伺服端以 Schema 實作）。
+ * 動作沿用玩家的 AnimState，所以前端可以直接餵給 Avatar 播同一套動畫。
+ */
+export interface NpcState {
+  x: number;
+  z: number;
+  rotY: number;
+  anim: AnimState;
+  hp: number;
+}
+
 /** S→C：寵物被丟出去的飛行資訊（命運已由伺服端決定，前端只播飛行視覺） */
 export interface PetFlightEvent {
   petId: string;
@@ -406,6 +418,7 @@ export const Messages = {
   petDrop: 'petDrop',
   petThrow: 'petThrow',
   petFlight: 'petFlight',
+  npcSay: 'npcSay',
   stovePlace: 'stovePlace',
   stoveTake: 'stoveTake',
   ovenPlace: 'ovenPlace',

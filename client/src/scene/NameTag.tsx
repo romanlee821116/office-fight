@@ -1,6 +1,7 @@
 import { Html } from '@react-three/drei';
 import { FIGHT } from '@office/shared';
 import { useGame } from '../store/useGame';
+import { SpeechBubble } from './SpeechBubble';
 
 interface NameTagProps {
   sessionId: string;
@@ -17,12 +18,7 @@ export function NameTag({ sessionId, isMe = false }: NameTagProps) {
   return (
     <Html position={[0, 2.1, 0]} center distanceFactor={14} zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
       <div className="flex flex-col items-center gap-1 select-none" style={{ transform: 'translateY(-100%)' }}>
-        {bubble && (
-          <div className="relative max-w-[220px] rounded-2xl bg-white px-3 py-1.5 text-[13px] leading-snug text-ink shadow-md whitespace-pre-wrap break-words">
-            {bubble.text}
-            <span className="absolute left-1/2 -bottom-1.5 h-3 w-3 -translate-x-1/2 rotate-45 bg-white" />
-          </div>
-        )}
+        {bubble && <SpeechBubble text={bubble.text} />}
         <div
           className={
             'flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-medium shadow whitespace-nowrap ' +

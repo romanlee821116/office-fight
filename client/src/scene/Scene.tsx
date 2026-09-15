@@ -6,6 +6,7 @@ import { BloodParticles } from './BloodParticles';
 import { CameraRig } from './CameraRig';
 import { SceneEnvironment } from './Environment';
 import { LocalPlayer } from './LocalPlayer';
+import { Npc } from './Npc';
 import { Office } from './Office';
 import { Pets } from './Pets';
 import { PickleCourt } from './PickleCourt';
@@ -54,6 +55,7 @@ export function Scene() {
       <LocalPlayer />
       <RemotePlayers />
       <Pets />
+      <Npc />
       <Stove />
       <Oven />
       <Pickups />

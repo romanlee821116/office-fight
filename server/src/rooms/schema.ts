@@ -1,5 +1,5 @@
 import { MapSchema, Schema, type } from '@colyseus/schema';
-import type { AnimState, PetAnim } from '@office/shared';
+import { NPC, type AnimState, type PetAnim } from '@office/shared';
 
 export class Player extends Schema {
   @type('string') id: string = '';
@@ -39,10 +39,21 @@ export class Pet extends Schema {
   @type('number') feedCount: number = 0;
 }
 
+/** 路人 NPC：場上固定一位，不會攻擊人，但可以被打倒 */
+export class Npc extends Schema {
+  @type('float32') x: number = 0;
+  @type('float32') z: number = 0;
+  @type('float32') rotY: number = 0;
+  @type('string') anim: AnimState = 'idle';
+  @type('number') hp: number = NPC.maxHp;
+}
+
 export class OfficeState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Pickup }) pickups = new MapSchema<Pickup>();
   @type({ map: Pet }) pets = new MapSchema<Pet>();
+  /** 路人 NPC（固定一位，始終存在） */
+  @type(Npc) npc = new Npc();
   /** 瓦斯爐上的食物（weapon id，空字串 = 沒有） */
   @type('string') stoveFoodId: string = '';
   /** '' | 'cooking' | 'burning' */

@@ -42,6 +42,16 @@ export interface PetTarget {
 
 export const petTargets = new Map<string, PetTarget>();
 
+/** 路人 NPC 的目標狀態（場上固定一位，由網路更新，Npc 每幀插補） */
+export const npcTarget = {
+  x: SPAWN_POINT.x,
+  z: SPAWN_POINT.z,
+  rotY: 0,
+  anim: 'idle' as AnimState,
+  /** 首次收到時直接 snap 到位 */
+  fresh: true,
+};
+
 /** 本地玩家目前位置（LocalPlayer 寫入，CameraRig 讀取） */
 export const local = {
   x: SPAWN_POINT.x,
@@ -210,6 +220,11 @@ export function focusPlayer(sessionId: string, durationMs = 2500): void {
 export function resetRuntime(): void {
   remoteTargets.clear();
   petTargets.clear();
+  npcTarget.x = SPAWN_POINT.x;
+  npcTarget.z = SPAWN_POINT.z;
+  npcTarget.rotY = 0;
+  npcTarget.anim = 'idle';
+  npcTarget.fresh = true;
   local.x = SPAWN_POINT.x;
   local.z = SPAWN_POINT.z;
   local.rotY = 0;

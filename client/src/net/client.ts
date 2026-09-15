@@ -4,6 +4,7 @@ import {
   EAT,
   FIGHT,
   Messages,
+  NPC,
   SEAT_BY_ID,
   type ChatMessage,
   type CourtShotEvent,
@@ -13,6 +14,7 @@ import {
   type HitEvent,
   type IdleEvent,
   type JoinOptions,
+  type NpcState,
   type PetFlightEvent,
   type PetState,
   type PickupPayload,
@@ -32,6 +34,7 @@ import {
   bloodQueue,
   courtBall,
   local,
+  npcTarget,
   petTargets,
   projectileQueue,
   remoteTargets,
@@ -44,6 +47,7 @@ interface OfficeStateShape {
   players: Map<string, PlayerState>;
   pickups: Map<string, PickupState>;
   pets: Map<string, PetState>;
+  npc: NpcState;
   stoveFoodId: string;
   stoveStage: string;
   ovenFoodId: string;
@@ -303,6 +307,25 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   $(r.state).listen('weatherCode', syncWeather);
   $(r.state).listen('weatherTemp', syncWeather);
   $(r.state).listen('weatherIsDay', syncWeather);
+
+  // 路人 NPC：場上固定一位，但 child schema 要等第一次 patch 才會建立，所以用 listen 等它出現
+  const syncNpc = (npc: NpcState) => {
+    npcTarget.x = npc.x;
+    npcTarget.z = npc.z;
+    npcTarget.rotY = npc.rotY;
+    npcTarget.anim = npc.anim;
+    useGame.getState().setNpc({ hp: npc.hp, anim: npc.anim });
+  };
+  $(r.state).listen('npc', (npc) => {
+    if (!npc) return;
+    syncNpc(npc);
+    npcTarget.fresh = true;
+    $(npc).onChange(() => syncNpc(npc));
+  });
+
+  r.onMessage<{ text: string }>(Messages.npcSay, (ev) => {
+    useGame.getState().showBubble(NPC.id, ev.text);
+  });
 
   r.onMessage<PetFlightEvent>(Messages.petFlight, (ev) => {
     const t = petTargets.get(ev.petId);
