@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import {
   Color,
@@ -80,6 +80,15 @@ function Precipitation() {
     [],
   );
   const mode = useRef<'rain' | 'snow' | null>(null);
+
+  // instancedMesh 的矩陣預設是單位矩陣：若一開場就是晴天，下方的重灑流程不會執行，
+  // 340 個 instance 會疊在原點變成一顆白方塊（剛好落在辦公室地板中央），故掛載時先全部藏起來
+  useLayoutEffect(() => {
+    const im = mesh.current;
+    if (!im) return;
+    for (let i = 0; i < POOL; i++) im.setMatrixAt(i, HIDDEN);
+    im.instanceMatrix.needsUpdate = true;
+  }, []);
 
   useFrame((_state, dt) => {
     const im = mesh.current;
