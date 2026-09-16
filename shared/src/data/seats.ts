@@ -1,6 +1,6 @@
 import { resolvePosition, type Vec2 } from '../collision';
-import { CAROUSEL, COASTER, PLAYGROUND, SEAT_INTERACT_DISTANCE, SEAT_STAND_OFFSET } from '../constants';
-import { coasterCarAt } from './coaster';
+import { CAROUSEL, COASTER, PLAYGROUND, SEAT_INTERACT_DISTANCE, SEAT_STAND_OFFSET, SHIP } from '../constants';
+import { coasterAtStation, coasterCarAt } from './coaster';
 import type { AnimState, FurnitureDef, Seat } from '../types';
 import { FURNITURE } from './furniture';
 
@@ -113,6 +113,47 @@ function coasterSeats(): Seat[] {
   }));
 }
 
+/** 海盜船：一排座位共用船尾側的上下船點 */
+function shipSeats(): Seat[] {
+  const bx = SHIP.x + SHIP.boardOffsetX;
+  const bz = SHIP.z + SHIP.boardOffsetZ;
+  return Array.from({ length: SHIP.seatCount }, (_, index) => ({
+    id: `ship:${index}`,
+    furnitureId: 'pirate-ship',
+    x: bx,
+    z: bz,
+    // 上船時面向船（-Z）
+    rotY: Math.PI,
+    anim: 'sit' as AnimState,
+    label: '搭海盜船',
+    standAt: { x: bx, z: bz },
+    ride: { kind: 'ship' as const, index },
+  }));
+}
+
+/** 一輪 = 六次擺盪 + 停靠 */
+export function shipCycleSec(): number {
+  return SHIP.swings * SHIP.swingSec + SHIP.dwellMs / 1000;
+}
+
+/**
+ * 海盜船當下的擺角。
+ * 幅度用一條 sin(πu) 的包絡線由小到大再收回，載波是 sin(2π·次數·u)，
+ * 兩者在 u=0 與 u=1 都為零，所以最後一定剛好停在最低點，接得上停靠時間。
+ */
+export function shipAngle(now: number): number {
+  const swingSec = SHIP.swings * SHIP.swingSec;
+  const phase = (now / 1000) % shipCycleSec();
+  if (phase >= swingSec) return 0; // 停靠中
+  const u = phase / swingSec;
+  return SHIP.maxAngle * Math.sin(Math.PI * u) * Math.sin(2 * Math.PI * SHIP.swings * u);
+}
+
+/** 船停在最低點、可以上下船 */
+export function shipAtDock(now: number): boolean {
+  return (now / 1000) % shipCycleSec() >= SHIP.swings * SHIP.swingSec;
+}
+
 /**
  * 會動的座位在某個時刻的位置、高度與朝向。時間基準是 Date.now()，
  * 跟牆上時鐘（beatNow）同一條軸，所以伺服端與每台前端算出來的角度一致，
@@ -128,6 +169,51 @@ export function carouselTurn(now: number): number {
 
 export function carouselSeatAngle(index: number, now: number): number {
   return CAROUSEL.seatAngle + (index / CAROUSEL.seatCount) * Math.PI * 2 + carouselTurn(now);
+}
+
+/** 船身當下的位置與姿態：船底中心點、長軸方向、以及擺盪的水平速度方向 */
+export function shipHullAt(now: number): { bx: number; by: number; cos: number; sin: number; dirX: number } {
+  const th = shipAngle(now);
+  // 用前後各取一小段時間估擺盪方向，正負代表往 +X 或 -X 掃
+  const dTh = shipAngle(now + 30) - shipAngle(now - 30);
+  return {
+    bx: SHIP.x + SHIP.arm * Math.sin(th),
+    by: SHIP.pivotY - SHIP.arm * Math.cos(th),
+    cos: Math.cos(th),
+    sin: Math.sin(th),
+    dirX: dTh >= 0 ? 1 : -1,
+  };
+}
+
+/**
+ * 站在 (x, z)、身高 height 的人有沒有被擺盪中的船身撞到。
+ * 把船當成跟著擺臂轉的方盒：沿長軸 ±halfLen、離船底 0~hullHeight。
+ */
+export function shipHitsPoint(x: number, z: number, height: number, now: number): boolean {
+  if (shipAtDock(now)) return false; // 停靠中不會撞人
+  const halfLen = (8.8 * SHIP.scale) / 2;
+  const halfWide = (4.8 * SHIP.scale) / 2;
+  if (Math.abs(z - SHIP.z) > halfWide) return false; // 側向錯開就撞不到
+  const h = shipHullAt(now);
+  // 人的身體取腳踝與頭兩點，任一點落在船身盒內就算撞到
+  for (const py of [0.2, height]) {
+    const ox = x - h.bx;
+    const oy = py - h.by;
+    const along = ox * h.cos + oy * h.sin;
+    const up = -ox * h.sin + oy * h.cos;
+    if (Math.abs(along) <= halfLen && up >= 0 && up <= SHIP.hullHeight) return true;
+  }
+  return false;
+}
+
+/**
+ * 現在能不能上下這個座位。旋轉木馬貼著地面隨時可以；
+ * 雲霄飛車與海盜船都架在高處，只有停在站上／最低點時才安全。
+ */
+export function rideBoardable(seat: Seat, now: number): boolean {
+  if (seat.ride?.kind === 'coaster') return coasterAtStation(now);
+  if (seat.ride?.kind === 'ship') return shipAtDock(now);
+  return true;
 }
 
 /** 會動的座位當下的姿態；pitch 為俯仰，正值為爬升 */
@@ -154,6 +240,23 @@ export function rideSeatAt(seat: Seat, now: number): RidePose | null {
   if (seat.ride?.kind === 'coaster') {
     const car = coasterCarAt(seat.ride.index, now);
     return { x: car.x, z: car.z, y: car.y + COASTER.riderY, rotY: car.yaw, pitch: car.pitch };
+  }
+  if (seat.ride?.kind === 'ship') {
+    const th = shipAngle(now);
+    // 座位在船身上的位置：沿船長軸（世界 X）排開，離支點 arm - seatY
+    const dx = (seat.ride.index - (SHIP.seatCount - 1) / 2) * SHIP.seatGap + SHIP.seatOffsetX;
+    const drop = SHIP.arm - SHIP.seatY;
+    const cos = Math.cos(th);
+    const sin = Math.sin(th);
+    return {
+      x: SHIP.x + dx * cos + drop * sin,
+      z: SHIP.z,
+      y: SHIP.pivotY + dx * sin - drop * cos,
+      // 全船的人都朝 +X（船頭方向）
+      rotY: Math.PI / 2,
+      // 船身跟著擺臂轉，擺向 +X 時船頭抬起
+      pitch: th,
+    };
   }
   return null;
 }
@@ -185,8 +288,8 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   return [];
 });
 
-// 雲霄飛車的座位不對應任何碰撞家具（軌道架在頭頂上），直接補進座位表
-SEATS.push(...coasterSeats());
+// 雲霄飛車與海盜船的座位不對應任何碰撞家具（都架在頭頂上），直接補進座位表
+SEATS.push(...coasterSeats(), ...shipSeats());
 
 export const SEAT_BY_ID = new Map(SEATS.map((s) => [s.id, s]));
 

@@ -159,9 +159,19 @@ export const courtBall = {
 };
 
 /** 套用伺服端的擊退結果 */
+/**
+ * 擊退的飛行時間跟著距離走：以一般揮拳（FIGHT.knockback 1.5m / knockbackMs 250ms）
+ * 的速度為基準，所以近距離擊退的手感完全不變，但被海盜船撞飛十幾公尺時
+ * 才不會變成瞬移。上限 1.2 秒，免得飛太久失去控制權。
+ */
+const KNOCKBACK_SPEED = FIGHT.knockback / FIGHT.knockbackMs;
+const KNOCKBACK_MAX_MS = 1200;
+
 export function applyKnockback(toX: number, toZ: number, faceX: number, faceZ: number): void {
   const now = performance.now();
-  local.knockback = { x0: local.x, z0: local.z, x1: toX, z1: toZ, start: now, end: now + FIGHT.knockbackMs };
+  const dist = Math.hypot(toX - local.x, toZ - local.z);
+  const ms = Math.min(KNOCKBACK_MAX_MS, Math.max(FIGHT.knockbackMs, dist / KNOCKBACK_SPEED));
+  local.knockback = { x0: local.x, z0: local.z, x1: toX, z1: toZ, start: now, end: now + ms };
   local.staggerUntil = now + FIGHT.staggerMs;
   local.rotY = Math.atan2(faceX, faceZ);
   local.emote = null;

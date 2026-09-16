@@ -18,11 +18,14 @@ import {
   STOVE,
   WEATHER,
   CAROUSEL,
-  coasterAtStation,
-  coasterCarAt,
   findNpcHazard,
   getPet,
+  SHIP,
+  rideBoardable,
   rideSeatAt,
+  shipAtDock,
+  shipHitsPoint,
+  shipHullAt,
   petSizeFactor,
   DUMBBELL_RACK_SLOTS,
   KITCHEN_CROISSANT_SPOT,
@@ -108,6 +111,8 @@ interface ClientMeta {
   rideTimer: { clear(): void } | null;
   /** 最後一次被爐火燒到的時間 */
   lastBurnAt: number;
+  /** 最後一次被海盜船撞到的時間 */
+  lastShipHitAt: number;
   /** 分頁切到背景的時間戳，null 代表分頁在前景 */
   hiddenSince: number | null;
   /** 已發出閒置警告，避免重複發送 */
@@ -259,6 +264,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.clock.setInterval(() => this.tickNpc(), NPC.aiTickMs);
     this.clock.setInterval(() => this.tickNpcHazard(), NPC.hazardTickMs);
     this.clock.setInterval(() => this.tickRides(), SYNC_INTERVAL_MS);
+    this.clock.setInterval(() => this.tickShipSweep(), SYNC_INTERVAL_MS);
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
 
     void this.refreshWeather();
@@ -362,6 +368,7 @@ export class OfficeRoom extends Room<OfficeState> {
       respawnTimer: null,
       rideTimer: null,
       lastBurnAt: 0,
+      lastShipHitAt: 0,
       hiddenSince: null,
       idleWarned: false,
     });
@@ -447,8 +454,8 @@ export class OfficeRoom extends Room<OfficeState> {
     const seat = SEAT_BY_ID.get(payload?.seatId ?? '');
     if (!seat) return;
     if (seatDistance(seat, player.x, player.z) > SEAT_INTERACT_DISTANCE + SIT_DISTANCE_TOLERANCE) return;
-    // 車在半路上就不讓人上車，不然會有人憑空出現在半空中
-    if (seat.ride?.kind === 'coaster' && !coasterAtStation(Date.now())) return;
+    // 設施跑到一半就不讓人上，不然會有人憑空出現在半空中
+    if (seat.ride && !rideBoardable(seat, Date.now())) return;
     for (const other of this.state.players.values()) {
       if (other.seatId === seat.id) return; // 已有人
     }
@@ -486,20 +493,23 @@ export class OfficeRoom extends Room<OfficeState> {
     meta.rideTimer = null;
     const seat = SEAT_BY_ID.get(player.seatId);
 
-    // 雲霄飛車：整條軌道都架在 2.6m 以上，所以只有停在站上時下車才是安全的，
-    // 車一開走就跳車一律摔死，落點在車子當下的正下方
-    if (seat?.ride?.kind === 'coaster') {
+    // 雲霄飛車與海盜船都架在高處，只有停在站上／最低點時下車才安全；
+    // 跑到一半跳車一律摔死，落點在當下位置的正下方
+    if (seat?.ride && seat.ride.kind !== 'carousel') {
       const now = Date.now();
-      const atStation = coasterAtStation(now);
-      const car = coasterCarAt(seat.ride.index, now);
-      const landing = atStation ? standPointForSeat(seat) : resolvePosition(car.x, car.z);
+      const safe = rideBoardable(seat, now);
+      const at = rideSeatAt(seat, now);
+      const landing = safe ? standPointForSeat(seat) : resolvePosition(at?.x ?? player.x, at?.z ?? player.z);
       player.seatId = '';
       player.x = landing.x;
       player.z = landing.z;
       player.anim = 'idle';
       meta.lastActivityAt = now;
       meta.lastMoveAt = now;
-      if (!atStation) this.killByFall(player);
+      if (!safe) {
+        const ride = seat.ride.kind === 'ship' ? '海盜船' : '雲霄飛車';
+        this.knockOut(player, `🎢 ${player.name} 在${ride}上跳車，摔死了`, '跳車摔死');
+      }
       return;
     }
 
@@ -513,16 +523,16 @@ export class OfficeRoom extends Room<OfficeState> {
     meta.lastMoveAt = Date.now();
   }
 
-  /** 在高處跳車：摔死，走跟爐火一樣的倒地與重生流程 */
-  private killByFall(player: Player): void {
+  /** 直接擊倒某人：走跟爐火一樣的倒地與重生流程 */
+  private knockOut(player: Player, message: string, reason: string): void {
     player.hp = 0;
     player.anim = 'dead';
     this.dropWeapon(player);
     this.dropCarriedPet(player.id);
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
-    this.broadcastSystem(`🎢 ${player.name} 在雲霄飛車上跳車，摔死了`);
-    logger.info(`跳車摔死：${player.name}`);
+    this.broadcastSystem(message);
+    logger.info(`${reason}：${player.name}`);
     const meta = this.meta.get(player.id);
     meta?.respawnTimer?.clear();
     const playerId = player.id;
@@ -1431,6 +1441,47 @@ export class OfficeRoom extends Room<OfficeState> {
       player.x = at.x;
       player.z = at.z;
       player.rotY = at.rotY;
+    }
+  }
+
+  /**
+   * 擺盪中的海盜船掃到地面上的人：直接撞飛並擊倒。
+   * 前端收 hit 事件就會播噴血與擊退，跟被武器打中共用同一套。
+   */
+  private tickShipSweep(): void {
+    const now = Date.now();
+    if (shipAtDock(now)) return;
+    const hull = shipHullAt(now);
+    for (const player of this.state.players.values()) {
+      if (player.hp <= 0 || player.seatId) continue; // 倒地與船上的人不算
+      const meta = this.meta.get(player.id);
+      // 同一趟掃過去只結算一次，不然 20Hz 會連續扣好幾下
+      if (!meta || now - meta.lastShipHitAt < SHIP.hitCooldownMs) continue;
+      if (!shipHitsPoint(player.x, player.z, 1.6, now)) continue;
+      meta.lastShipHitAt = now;
+
+      // 往船掃過來的方向撞飛
+      const dirX = hull.dirX;
+      const to = moveWithCollision({ x: player.x, z: player.z }, dirX * SHIP.hitKnockback, 0);
+      player.hp = Math.max(0, player.hp - SHIP.hitDamage);
+      const killed = player.hp === 0;
+      const event: HitEvent = {
+        attackerId: 'pirate-ship',
+        targetId: player.id,
+        x: player.x,
+        z: player.z,
+        dirX,
+        dirZ: 0,
+        toX: to.x,
+        toZ: to.z,
+        hp: player.hp,
+        killed,
+      };
+      player.x = to.x;
+      player.z = to.z;
+      this.broadcast(Messages.hit, event);
+      // 只有血歸零才倒地，撞不死就只是飛出去
+      if (killed) this.knockOut(player, `🏴\u200d☠️ ${player.name} 被海盜船撞飛了`, '被海盜船撞飛');
     }
   }
 

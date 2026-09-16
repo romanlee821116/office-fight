@@ -11,10 +11,12 @@ import {
   PARK_MIN_X,
   PARK_MIN_Z,
   PLAY_MIN_X,
+  SHIP,
   carouselTurn,
 } from '@office/shared';
 import { Coaster } from './Coaster';
 import { KitModel } from './KitModel';
+import { PirateShip } from './PirateShip';
 import { Fence } from './PickleCourt';
 import { useSceneTheme } from './SceneTheme';
 
@@ -24,6 +26,10 @@ const PARK_D = PARK_MAX_Z - PARK_MIN_Z;
 /** 上車點（與 seats.ts 的 coasterSeats 同一個位置） */
 const BOARD_X = COASTER.startX + 2;
 const BOARD_Z = COASTER.startZ + 1.5;
+
+/** 海盜船的上下船點（與 seats.ts 的 shipSeats 同一個位置） */
+const SHIP_BOARD_X = SHIP.x + SHIP.boardOffsetX;
+const SHIP_BOARD_Z = SHIP.z + SHIP.boardOffsetZ;
 
 /** coaster kit 的佈景件偏小（樹 1.19m、攤位 1.55m），放大到跟 1.7m 的角色相稱 */
 const PROP_SCALE = 1.6;
@@ -98,10 +104,15 @@ export function Park() {
 
       <Carousel />
       <Coaster />
+      <PirateShip />
 
       {/* 車站入口：上車點就在拱門底下（軌道架在 2.6m 高，坐下去才送上車） */}
       <KitModel model="park/coaster/ride-entrance" position={[BOARD_X, 0, BOARD_Z]} rotY={Math.PI} scale={PROP_SCALE} />
       <KitModel model="park/coaster/station" position={[BOARD_X, 0, BOARD_Z - 0.9]} scale={PROP_SCALE} />
+
+      {/* 海盜船搭乘口：同樣的拱門＋月台，甲板在 3m 高，坐下去才送上船 */}
+      <KitModel model="park/coaster/ride-entrance" position={[SHIP_BOARD_X, 0, SHIP_BOARD_Z]} rotY={0} scale={PROP_SCALE} />
+      <KitModel model="park/coaster/station" position={[SHIP_BOARD_X, 0, SHIP_BOARD_Z + 0.9]} scale={PROP_SCALE} />
 
       {/* 園區佈景 */}
       {PROPS.map((p) => (

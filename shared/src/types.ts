@@ -106,7 +106,7 @@ export interface Seat {
    * 會移動的座位（旋轉木馬）：x / z 只是上車點，實際位置每刻由 rideSeatAt() 算出來。
    * 前後端用同一條式子，所以不必為了同步多傳任何狀態。
    */
-  ride?: { kind: 'carousel' | 'coaster'; index: number };
+  ride?: { kind: 'carousel' | 'coaster' | 'ship'; index: number };
 }
 
 export interface SitPayload {

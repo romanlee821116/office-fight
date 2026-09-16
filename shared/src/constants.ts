@@ -44,7 +44,7 @@ export const PLAY_CENTER_Z = (PLAY_MIN_Z + PLAY_MAX_Z) / 2;
 export const PARK_MIN_X = GYM_WALL_X;
 export const PARK_MAX_X = ROOM_MAX_X;
 export const PARK_MIN_Z = PLAY_MAX_Z;
-export const PARK_MAX_Z = 32;
+export const PARK_MAX_Z = 40;
 export const PARK_CENTER_X = (PARK_MIN_X + PARK_MAX_X) / 2;
 export const PARK_CENTER_Z = (PARK_MIN_Z + PARK_MAX_Z) / 2;
 /** 從兒童遊戲區走進遊樂園的缺口中心與寬度 */
@@ -159,7 +159,7 @@ export const PET = {
 export const NPC = {
   /** 場上唯一，前端拿它當名牌與對話泡泡的 key */
   id: 'npc-passerby',
-  name: '丁eff',
+  name: 'NPC',
   /** 借用玩家的角色模型 */
   avatarId: 'chou',
   maxHp: 1000,
@@ -501,6 +501,68 @@ export const COASTER = {
   gravity: 10,
   /** 進站後停留多久讓人上下車 */
   dwellMs: 3000,
+};
+
+/**
+ * 海盜船：吊在 A 字架下的擺盪帆船。船身用 pirate kit 的 ship-pirate-small，
+ * 架子是程式生成的（套件沒有擺盪機構的零件）。
+ * 沿 X 軸擺盪，所以船身長軸要轉 90° 對到世界 X。
+ *
+ * 關鍵限制：船吊在支點下方，所以**桅杆不能高過擺臂**，否則會穿過頂端橫梁。
+ * 船原尺寸桅杆頂 9.96m，×0.85 後 8.47m，擺臂拉到 9m 才剛好留 0.53m 餘裕。
+ * A 字架擺在船身兩側（±frameZ）之外，船只在中間的平面擺盪，兩者在 Z 上錯開。
+ */
+export const SHIP = {
+  x: 26,
+  z: 35,
+  /** 支點高度與擺臂長度；兩者相減就是靜止時船底離地的高度 */
+  pivotY: 10.1,
+  arm: 9,
+  /** 最大擺角 */
+  maxAngle: (75 * Math.PI) / 180,
+  /** 擺盪幾次、一次幾秒 */
+  swings: 6,
+  swingSec: 3.6,
+  /** 停下來讓人上下船的時間 */
+  dwellMs: 6000,
+  /** ship-pirate-small 原始長 8.8、寬 4.8、桅杆頂 9.96；×0.85 後長 7.5m、寬 4.1m */
+  scale: 0.85,
+  /**
+   * 幾個座位、沿船身的間距，以及整排座位往船艏偏移多少。
+   * 這是一艘真的帆船模型，甲板上有東西：艉樓在船身 z -4~-2.5、高到 4.28，
+   * 桅杆在 z 0~3。整排人平均攤在船上會有幾個坐進艉樓，所以往船艏挪開。
+   */
+  seatCount: 6,
+  seatGap: 0.8,
+  seatOffsetX: 0.35,
+  /** 座位相對船底的高度＝主甲板，實測 2.10（×0.85） */
+  seatY: 2.1 * 0.85,
+  /**
+   * 上下船的地面點相對船中心的位置，seats.ts 與 Park.tsx 都讀這一組。
+   *
+   * Z 要擺到 A 字架之外（frameZ 3.4），玩家才是從南邊走過來排隊，
+   * 不會穿過船底下——船靜止時船底只離地 1.1m，站在底下會被船身穿過去。
+   * 園區南圍籬在 z 40，所以這個值最多到 4.5 左右。
+   *
+   * X 則是往船身一端挪開，免得搭乘口就貼在船正側面。擺盪端點其實很安全
+   * （船盪到那裡已經抬到 3m 以上），所以往兩側讓開不會被撞到。
+   */
+  boardOffsetX: 6,
+  boardOffsetZ: 4,
+  /** A 字架在 ±Z 的位置（要大於船半寬 2.04），以及腳往 ±X 張開多遠 */
+  frameZ: 3.4,
+  frameSpread: 4.3,
+  /**
+   * 走到擺盪中的船底下會被撞飛。船身當成一個跟著擺臂轉的方盒：
+   * 長 8.8×scale、寬 4.8×scale，從船底往上算 hullHeight 高。
+   */
+  hullHeight: 3 * 0.85,
+  /** 被撞一次扣多少血（滿血 200，所以撐得住四下） */
+  hitDamage: 50,
+  /** 被撞飛的距離（一般揮拳的擊退是 1.5m） */
+  hitKnockback: 14,
+  /** 同一個人兩次被撞之間的最短間隔，免得同一趟掃過去連續結算 */
+  hitCooldownMs: 800,
 };
 
 /** 決鬥 */

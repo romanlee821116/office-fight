@@ -2,6 +2,7 @@ import {
   GYM_WALL_X,
   CAROUSEL,
   OVEN,
+  SHIP,
   PARK_MAX_Z,
   PARK_MIN_X,
   PARK_MIN_Z,
@@ -264,6 +265,21 @@ const park: FurnitureDef[] = [
     h: 7,
   },
 ];
+
+// 海盜船 A 字架的四隻腳（船身架在頭頂上，不需要碰撞）
+for (const zs of [-1, 1]) {
+  for (const xs of [-1, 1]) {
+    park.push({
+      id: `ship-leg-${xs}-${zs}`,
+      type: 'park',
+      x: SHIP.x + xs * SHIP.frameSpread,
+      z: SHIP.z + zs * SHIP.frameZ,
+      w: 0.5,
+      d: 0.5,
+      h: 1.2,
+    });
+  }
+}
 FURNITURE.push(...park);
 
 FURNITURE.push(...terrace);

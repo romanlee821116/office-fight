@@ -15,12 +15,12 @@ import {
   STOVE,
   SYNC_INTERVAL_MS,
   WALK_SPEED,
-  coasterAtStation,
   findNearestSeat,
   findNpcHazard,
   getAvatar,
   getWeapon,
   moveWithCollision,
+  rideBoardable,
   rideSeatAt,
   type AnimState,
 } from '@office/shared';
@@ -128,8 +128,9 @@ function occupiedSeats(meId: string | undefined): Set<string> {
   for (const p of Object.values(useGame.getState().players)) {
     if (p.seatId && p.sessionId !== meId) set.add(p.seatId);
   }
-  // 車還在半路上就不提示上車（伺服端也會擋，這裡只是別讓提示閃出來）
-  if (!coasterAtStation(Date.now())) for (const seat of SEATS) if (seat.ride?.kind === 'coaster') set.add(seat.id);
+  // 設施跑到一半就不提示上車（伺服端也會擋，這裡只是別讓提示閃出來）
+  const now = Date.now();
+  for (const seat of SEATS) if (seat.ride && !rideBoardable(seat, now)) set.add(seat.id);
   return set;
 }
 
@@ -275,6 +276,11 @@ export function LocalPlayer() {
     const k = keys.current;
     const now = performance.now();
 
+    // 傾角每幀先歸零，真的在搭乘時下面才會設回去。
+    // 倒地與擊退都會提前 return，所以不能只在座位分支裡重設，
+    // 否則在雲霄飛車上跳車摔死後，復活也會一直是傾倒的。
+    if (tilt.current) tilt.current.rotation.x = 0;
+
     let ix = 0;
     let iz = 0;
     if (k.forward) iz += 1;
@@ -333,7 +339,6 @@ export function LocalPlayer() {
         if (tilt.current) tilt.current.rotation.x = -ride.pitch;
       } else {
         g.position.set(local.x, 0, local.z);
-        if (tilt.current && tilt.current.rotation.x !== 0) tilt.current.rotation.x = 0;
       }
       g.rotation.y = local.rotY;
       useGame.getState().setNearSeat(null);
