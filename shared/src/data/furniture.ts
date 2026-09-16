@@ -3,21 +3,24 @@ import {
   CAROUSEL,
   OVEN,
   SHIP,
-  PARK_MAX_Z,
-  PARK_MIN_X,
-  PARK_MIN_Z,
   PLAYGROUND,
   POND,
-  PLAY_MAX_Z,
-  PLAY_MIN_X,
-  PLAY_MIN_Z,
   ROOM_MAX_Z,
-  ROOM_MIN_X,
   ROOM_MIN_Z,
+  SNOW_GATE_W,
+  SNOW_GATE_X,
+  SNOW_MAX_X,
+  SNOW_MAX_Z,
+  SNOW_MIN_X,
+  SNOW_MIN_Z,
   TERRACE_WALL_X,
   WALL_HEIGHT,
+  XMAS_MAX_X,
+  XMAS_MAX_Z,
+  XMAS_MIN_Z,
 } from '../constants';
 import type { FurnitureDef } from '../types';
+import { BENCH_SIZE, BUNKER_SIZE, CABINS, cabinBox } from './xmas';
 
 /**
  * 辦公室家具配置（單位：公尺；原點在房間中央，X 向右、Z 向前/下）
@@ -195,17 +198,6 @@ const terrace: FurnitureDef[] = [
  */
 const SLIDE = PLAYGROUND.slide;
 const playground: FurnitureDef[] = [
-  // 世界外框是 L 形：遊戲區只佔露台那一段 X，左半邊這一大塊不是場地，用隱形碰撞塊擋住
-  {
-    id: 'play-void',
-    type: 'playground',
-    x: (ROOM_MIN_X + PLAY_MIN_X) / 2,
-    z: (PLAY_MIN_Z + PLAY_MAX_Z) / 2,
-    w: PLAY_MIN_X - ROOM_MIN_X,
-    d: PLAY_MAX_Z - PLAY_MIN_Z,
-    h: WALL_HEIGHT,
-  },
-
   // 兩組溜滑梯分立左右，爬梯朝外牆、滑道都朝場地中央（rotY = ±π/2 故 w/d 互換）
   { id: 'slide-a', type: 'playground', x: 26.2, z: 16.5, w: SLIDE.depth, d: SLIDE.width, h: 1.7, rotY: Math.PI / 2 },
   { id: 'slide-b', type: 'playground', x: 37.8, z: 16.5, w: SLIDE.depth, d: SLIDE.width, h: 1.7, rotY: -Math.PI / 2 },
@@ -244,16 +236,6 @@ FURNITURE.push(...playground);
  * 外觀由 client 的 Park 繪製，這裡只負責碰撞。
  */
 const park: FurnitureDef[] = [
-  // 左半邊（x < PARK_MIN_X）不開放，跟兒童遊戲區一樣用隱形塊擋掉
-  {
-    id: 'park-void',
-    type: 'park',
-    x: (ROOM_MIN_X + PARK_MIN_X) / 2,
-    z: (PARK_MIN_Z + PARK_MAX_Z) / 2,
-    w: PARK_MIN_X - ROOM_MIN_X,
-    d: PARK_MAX_Z - PARK_MIN_Z,
-    h: WALL_HEIGHT,
-  },
   // 旋轉木馬：整座擋住，從外圍上下車（方盒圈住圓形轉盤，四角會多擋一點）
   {
     id: 'carousel',
@@ -281,6 +263,153 @@ for (const zs of [-1, 1]) {
   }
 }
 FURNITURE.push(...park);
+
+/**
+ * 聖誕小鎮（x XMAS_*、z 8~20）與打雪仗場地（x SNOW_*、z 20~40）。
+ * 補上這兩塊之後，世界外框從 J 形變成完整長方形，原本用來擋住空區的
+ * play-void / park-void 隱形塊也就不需要了。
+ *
+ * 外觀由 client 的 ChristmasTown 以 Kenney Holiday Kit 繪製；
+ * 這裡除了碰撞盒，也是「哪棵樹站在哪」的唯一真實來源（variant = holiday/ 底下的模型名）。
+ */
+const FENCE_T = 0.3;
+const xmas: FurnitureDef[] = [];
+
+// 圍籬碰撞：木圍籬本身只是視覺，真正擋人的是這些薄塊
+// 1) 小鎮 / 兒童遊戲區之間（x = XMAS_MAX_X，遊戲區那道西側圍籬）
+xmas.push({
+  id: 'xmas-edge-east',
+  type: 'xmas',
+  x: XMAS_MAX_X,
+  z: (XMAS_MIN_Z + XMAS_MAX_Z) / 2,
+  w: FENCE_T,
+  d: XMAS_MAX_Z - XMAS_MIN_Z,
+  h: WALL_HEIGHT,
+});
+// 2) 小鎮 / 遊樂園之間（z = XMAS_MAX_Z 的東半段，遊樂園那道北側圍籬）
+xmas.push({
+  id: 'xmas-edge-south',
+  type: 'xmas',
+  x: (SNOW_MAX_X + XMAS_MAX_X) / 2,
+  z: XMAS_MAX_Z,
+  w: XMAS_MAX_X - SNOW_MAX_X,
+  d: FENCE_T,
+  h: WALL_HEIGHT,
+});
+// 3) 小鎮 / 雪仗場地之間（z = SNOW_MIN_Z 的西半段），中間留 SNOW_GATE_W 的缺口
+for (const [i, seg] of [
+  [SNOW_MIN_X, SNOW_GATE_X - SNOW_GATE_W / 2],
+  [SNOW_GATE_X + SNOW_GATE_W / 2, SNOW_MAX_X],
+].entries()) {
+  xmas.push({
+    id: `snow-gate-${i}`,
+    type: 'xmas',
+    x: (seg[0] + seg[1]) / 2,
+    z: SNOW_MIN_Z,
+    w: seg[1] - seg[0],
+    d: FENCE_T,
+    h: WALL_HEIGHT,
+  });
+}
+// 4) 雪仗場地 / 遊樂園之間（x = SNOW_MAX_X，遊樂園那道西側圍籬）
+xmas.push({
+  id: 'snow-edge-east',
+  type: 'xmas',
+  x: SNOW_MAX_X,
+  z: (SNOW_MIN_Z + SNOW_MAX_Z) / 2,
+  w: FENCE_T,
+  d: SNOW_MAX_Z - SNOW_MIN_Z,
+  h: WALL_HEIGHT,
+});
+
+// 木屋：碰撞盒即四面外牆（屋角原木柱多突出 0.4m，不另外算）
+for (const c of CABINS) {
+  const box = cabinBox(c);
+  xmas.push({ id: c.id, type: 'xmas', x: c.x, z: c.z, w: box.w, d: box.d, h: 4, rotY: c.rotY });
+}
+
+/**
+ * 小鎮的長椅：可以坐（座位表從這裡推導），所以要有碰撞盒。
+ * rotY 即坐下時角色的朝向：廣場那兩張面向大聖誕樹，屋子前的背靠著屋子往外看。
+ */
+const benches: { id: string; x: number; z: number; rotY: number }[] = [
+  { id: 'xmas-bench-square-w', x: -4, z: 12.4, rotY: 0 },
+  { id: 'xmas-bench-square-e', x: 8, z: 12.4, rotY: 0 },
+  { id: 'xmas-bench-cabin-a', x: -7.6, z: 12.4, rotY: Math.PI },
+  { id: 'xmas-bench-cabin-d', x: 15.4, z: 13.5, rotY: -Math.PI / 2 },
+];
+for (const b of benches) {
+  const sideways = Math.abs(Math.sin(b.rotY)) > 0.5;
+  xmas.push({
+    id: b.id,
+    type: 'xmas',
+    variant: 'bench',
+    x: b.x,
+    z: b.z,
+    w: sideways ? BENCH_SIZE.d : BENCH_SIZE.w,
+    d: sideways ? BENCH_SIZE.w : BENCH_SIZE.d,
+    h: BENCH_SIZE.h,
+    rotY: b.rotY,
+  });
+}
+
+/** 有碰撞的佈景（樹、岩石、雪堡）：variant 就是 holiday/ 底下的模型名 */
+interface XmasProp {
+  variant: string;
+  x: number;
+  z: number;
+  /** 碰撞半徑（樹只擋樹幹附近，不是整片樹冠）；雪堡改用 BUNKER_SIZE 的方盒，不填 */
+  r?: number;
+  h: number;
+  rotY?: number;
+}
+const xmasProps: XmasProp[] = [
+  // 大聖誕樹：小鎮廣場中央（cabin-a 與 cabin-c 之間），底下繞一圈小火車與禮物（都不擋路）
+  { variant: 'tree-decorated-snow', x: 2, z: 15, r: 0.8, h: 4.6 },
+
+  // 針葉林：沿西側圍籬與屋子之間的空隙，留出 z 9~12.5 的主街與通往雪仗場地的巷子
+  { variant: 'tree-snow-a', x: -11, z: 9.6, r: 0.7, h: 3.9 },
+  { variant: 'tree-snow-b', x: -10.2, z: 12.2, r: 0.7, h: 4 },
+  { variant: 'tree-snow-c', x: -11.2, z: 14.8, r: 0.7, h: 3.9, rotY: 0.6 },
+  { variant: 'tree-snow-a', x: -10.6, z: 17.6, r: 0.7, h: 3.9, rotY: 1.2 },
+  { variant: 'tree-snow-b', x: -5.2, z: 16.8, r: 0.7, h: 4 },
+  { variant: 'tree-snow-c', x: 8.4, z: 18.8, r: 0.7, h: 3.9 },
+  { variant: 'tree-snow-a', x: 5.2, z: 18.4, r: 0.7, h: 3.9, rotY: 2.1 },
+  { variant: 'tree-snow-b', x: 7.9, z: 17.4, r: 0.7, h: 4 },
+  { variant: 'tree-snow-c', x: 15.6, z: 18.2, r: 0.7, h: 3.9 },
+  { variant: 'tree-snow-a', x: 22, z: 18.4, r: 0.7, h: 3.9, rotY: 0.9 },
+  { variant: 'tree-snow-b', x: 22.1, z: 9.4, r: 0.7, h: 4 },
+  { variant: 'tree-snow-c', x: 14.8, z: 9.5, r: 0.7, h: 3.9, rotY: 1.6 },
+
+  // 積雪岩塊：塞在屋子與圍籬之間的縫隙，讓邊界不會空蕩蕩
+  { variant: 'rocks-medium', x: -11.2, z: 19.2, r: 1.6, h: 1.8, rotY: 0.4 },
+  { variant: 'rocks-small', x: 9.8, z: 10.4, r: 1.2, h: 1.3, rotY: 2.4 },
+  { variant: 'rocks-medium', x: 17.4, z: 19.1, r: 1.6, h: 1.8, rotY: 1.1 },
+
+  // 雪仗場地的雪堡掩體：以中線 z=30 鏡射對稱，兩邊拿到一模一樣的掩護
+  { variant: 'snow-bunker', x: -6.5, z: 25.5, h: 1 },
+  { variant: 'snow-bunker', x: 6.5, z: 25.5, h: 1 },
+  { variant: 'snow-bunker', x: 0, z: 28, h: 1, rotY: Math.PI },
+  { variant: 'snow-bunker', x: -6.5, z: 34.5, h: 1, rotY: Math.PI },
+  { variant: 'snow-bunker', x: 6.5, z: 34.5, h: 1, rotY: Math.PI },
+  { variant: 'snow-bunker', x: 0, z: 32, h: 1 },
+
+  // 場地四角的雪松，順便標出邊界
+  { variant: 'tree-snow-a', x: -10.6, z: 22, r: 0.7, h: 3.9 },
+  { variant: 'tree-snow-c', x: 10.6, z: 22, r: 0.7, h: 3.9, rotY: 1.4 },
+  { variant: 'tree-snow-b', x: -10.6, z: 38, r: 0.7, h: 4 },
+  { variant: 'tree-snow-a', x: 10.6, z: 38, r: 0.7, h: 3.9, rotY: 2.6 },
+];
+
+for (const [i, p] of xmasProps.entries()) {
+  const bunker = p.variant === 'snow-bunker';
+  const sideways = Math.abs(Math.sin(p.rotY ?? 0)) > 0.5;
+  const w = bunker ? (sideways ? BUNKER_SIZE.d : BUNKER_SIZE.w) : (p.r ?? 0) * 2;
+  const d = bunker ? (sideways ? BUNKER_SIZE.w : BUNKER_SIZE.d) : (p.r ?? 0) * 2;
+  xmas.push({ id: `xmas-prop-${i}`, type: 'xmas', variant: p.variant, x: p.x, z: p.z, w, d, h: p.h, rotY: p.rotY });
+}
+
+FURNITURE.push(...xmas);
 
 FURNITURE.push(...terrace);
 

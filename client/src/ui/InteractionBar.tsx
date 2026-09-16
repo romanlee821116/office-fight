@@ -1,4 +1,4 @@
-import { DANCES, EMOTES, NPC, NPC_HAZARDS, SEAT_BY_ID, getPet, getWeapon } from '@office/shared';
+import { DANCES, EMOTES, NPC, NPC_HAZARDS, SEAT_BY_ID, SNOWFIGHT, SNOW_TEAM_LABEL, getPet, getWeapon } from '@office/shared';
 import {
   eatHeldFood,
   sendAttack,
@@ -15,12 +15,14 @@ import {
   sendPetThrow,
   sendPickup,
   sendSit,
+  sendSnowJoin,
+  sendSnowReload,
   sendStand,
   sendStovePlace,
   sendStoveTake,
   sendSwing,
 } from '../net/client';
-import { canAttack, local, toggleDance, toggleExercise, triggerEmote, triggerSwing } from '../scene/runtime';
+import { canAttack, canThrowSnowball, local, toggleDance, toggleExercise, triggerEmote, triggerSwing } from '../scene/runtime';
 import { useGame } from '../store/useGame';
 
 /** 底部的一顆互動按鈕：一個按鍵提示 + 一句說明 */
@@ -37,6 +39,11 @@ interface Action {
 /** 空白鍵攻擊（與 LocalPlayer 的鍵盤處理一致：冷卻由 runtime 把關） */
 function attack(): void {
   if (canAttack(performance.now())) sendAttack();
+}
+
+/** 丟雪球（與 LocalPlayer 的空白鍵一致：冷卻與剩餘顆數由 runtime 把關） */
+function throwSnowball(): void {
+  if (canThrowSnowball(performance.now())) sendAttack();
 }
 
 function swing(): void {
@@ -67,6 +74,9 @@ export function InteractionBar() {
   const oven = useGame((s) => s.oven);
   const court = useGame((s) => s.court);
   const nearCourtSlot = useGame((s) => s.nearCourtSlot);
+  const snow = useGame((s) => s.snow);
+  const nearSnowSlot = useGame((s) => s.nearSnowSlot);
+  const nearSnowPile = useGame((s) => s.nearSnowPile);
 
   const carryingNpc = Boolean(meId) && npc.carrierId === meId;
   const weapon = getWeapon(me?.weaponId ?? '');
@@ -78,10 +88,27 @@ export function InteractionBar() {
   const canOvenTake = nearOven && Boolean(oven.foodId) && !weapon;
   const seatLabel = nearSeatId ? (SEAT_BY_ID.get(nearSeatId)?.label ?? '坐下') : '坐下';
   const ovenFoodName = oven.foodId ? getWeapon(oven.foodId)?.name : undefined;
+  const inSnow = me?.snowMode === true;
   const actions: Action[] = [];
+  /** 純提示：現在做不到、只是要讓玩家知道下一步的狀況，不做成按鈕 */
+  const notes: string[] = [];
+
+  // 雪仗模式：能做的只有報名分隊、補雪球與丟雪球，其他互動一律不列（伺服端也擋著）
+  if (inSnow && !dead) {
+    if (nearSnowSlot) actions.push({ hint: 'E', label: `加入${SNOW_TEAM_LABEL[nearSnowSlot]}打雪仗`, onClick: () => sendSnowJoin(nearSnowSlot) });
+    else if (nearSnowPile) actions.push({ hint: 'E', label: `撿雪球（補滿 ${SNOWFIGHT.maxBalls} 顆）`, onClick: sendSnowReload });
+    const waiting = me.snowTeam !== '' && snow.status !== 'playing';
+    if (waiting) notes.push('等開打…');
+    else if (me.ammo > 0) actions.push({ hint: '空白鍵', label: '丟雪球', onClick: throwSnowball });
+    else if (!nearSnowPile) notes.push('沒雪球了，到雪堆凹槽撿');
+  }
 
   // E：一次只會有一種主要互動，順序即優先序（與 LocalPlayer 的 E 鍵一致）
-  if (seated) actions.push({ hint: 'E', label: '起身', onClick: sendStand });
+  if (inSnow) {
+    // 上面已經列完雪仗能做的事
+  } else if (nearSnowSlot)
+    actions.push({ hint: 'E', label: `加入${SNOW_TEAM_LABEL[nearSnowSlot]}打雪仗`, onClick: () => sendSnowJoin(nearSnowSlot) });
+  else if (seated) actions.push({ hint: 'E', label: '起身', onClick: sendStand });
   else if (carriedPet) actions.push({ hint: 'E', label: `放下 ${getPet(carriedPet.petType).name}`, onClick: sendPetDrop });
   else if (carryingNpc) actions.push({ hint: 'E', label: `放開 ${NPC.name}`, onClick: sendNpcDrop });
   else if (canCourtJoin) actions.push({ hint: 'E', label: `報名匹克球（${nearCourtSlot} 側）`, onClick: () => sendCourtJoin(nearCourtSlot!) });
@@ -94,7 +121,7 @@ export function InteractionBar() {
   else if (nearSeatId) actions.push({ hint: 'E', label: seatLabel, onClick: () => sendSit(nearSeatId) });
 
   // F：拖著路人走到爐火／水池旁時，按住把他的頭壓下去（放開才收手）
-  if (carryingNpc && nearHazard && !dead)
+  if (carryingNpc && nearHazard && !dead && !inSnow)
     actions.push({
       hint: '按住 F',
       label: `把${NPC.name}的頭${NPC_HAZARDS[nearHazard].action}`,
@@ -103,14 +130,16 @@ export function InteractionBar() {
     });
 
   // F：拿著食物時餵寵物 / 放進烤箱 / 放上爐子
-  if (holdingFood && !carriedPet && !carryingNpc && !dead) {
+  if (holdingFood && !carriedPet && !carryingNpc && !dead && !inSnow) {
     if (nearPet) actions.push({ hint: 'F', label: `餵${getPet(nearPet.petType).name}吃${weapon.name}`, onClick: () => sendFeedPet(nearPet.id) });
     else if (nearOven && !oven.foodId && weapon.bakesTo) actions.push({ hint: 'F', label: `把${weapon.name}放進烤箱`, onClick: sendOvenPlace });
     else if (nearStove && !stove.foodId) actions.push({ hint: 'F', label: `把${weapon.name}放上爐子`, onClick: sendStovePlace });
   }
 
   // 空白鍵：丟寵物 / 揮拍 / 器材運動 / 攻擊（同一顆鍵依情境只會是其中一種）
-  if (carriedPet) actions.push({ hint: '空白鍵', label: `把${getPet(carriedPet.petType).name}丟出去`, onClick: sendPetThrow });
+  if (inSnow) {
+    // 空白鍵已在雪仗那一段列過
+  } else if (carriedPet) actions.push({ hint: '空白鍵', label: `把${getPet(carriedPet.petType).name}丟出去`, onClick: sendPetThrow });
   else if (inMatch && !dead) actions.push({ hint: '空白鍵', label: '揮拍', onClick: swing });
   else if (exercise && !me?.fightMode && !dead) actions.push({ hint: '空白鍵', label: `用${weapon?.name}彎舉`, onClick: () => toggleExercise(exercise) });
   else if (me?.fightMode && !dead)
@@ -121,13 +150,23 @@ export function InteractionBar() {
     });
 
   // R：吃掉手上的食物
-  if (holdingFood && !dead) actions.push({ hint: 'R', label: `吃掉${weapon.name}`, onClick: eatHeldFood });
+  if (holdingFood && !dead && !inSnow) actions.push({ hint: 'R', label: `吃掉${weapon.name}`, onClick: eatHeldFood });
 
-  // Q：放下手上的物品（球拍是比賽期間配發的，不能丟）
-  if (weapon && weapon.id !== 'paddle' && !dead) actions.push({ hint: 'Q', label: '放下', onClick: sendDrop });
+  // Q：放下手上的物品；球拍與雪球都是伺服端配發的，不能丟在地上
+  if (weapon && weapon.id !== 'paddle' && weapon.id !== 'snowball' && !dead)
+    actions.push({ hint: 'Q', label: '放下', onClick: sendDrop });
 
   return (
     <div className="pointer-events-none flex flex-col items-center gap-2">
+      {notes.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-2">
+          {notes.map((note) => (
+            <div key={note} className="glass rounded-full px-4 py-1.5 text-sm opacity-70">
+              {note}
+            </div>
+          ))}
+        </div>
+      )}
       {actions.length > 0 && (
         <div className="flex flex-wrap justify-center gap-2">
           {actions.map((a) => (

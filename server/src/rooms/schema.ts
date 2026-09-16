@@ -17,6 +17,10 @@ export class Player extends Schema {
   @type('string') weaponId: string = '';
   @type('number') ammo: number = 0;
   @type('boolean') onFire: boolean = false;
+  /** 打雪仗模式：手上只有雪球、只能在雪仗場地移動 */
+  @type('boolean') snowMode: boolean = false;
+  /** '' | 'red' | 'blue'；有隊伍但 snowMode 為 false 代表這場已經出局 */
+  @type('string') snowTeam: string = '';
 }
 
 export class Pickup extends Schema {
@@ -73,6 +77,12 @@ export class OfficeState extends Schema {
   @type('string') courtPlayerB: string = '';
   @type('uint8') courtScoreA: number = 0;
   @type('uint8') courtScoreB: number = 0;
+  /** 打雪仗比賽：idle | waiting | countdown | playing | over */
+  @type('string') snowStatus: string = 'idle';
+  /** countdown 期間的開打時間戳（Date.now 基準），其餘狀態為 0 */
+  @type('number') snowStartsAt: number = 0;
+  /** 結算時的獲勝隊伍（'' | 'red' | 'blue'） */
+  @type('string') snowWinner: string = '';
   /** WMO 天氣代碼，-1 = 尚未取得 */
   @type('number') weatherCode: number = -1;
   @type('number') weatherTemp: number = 0;

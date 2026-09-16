@@ -4,6 +4,7 @@ import { useGame } from '../store/useGame';
 import { Backdrop } from './Backdrop';
 import { BloodParticles } from './BloodParticles';
 import { CameraRig } from './CameraRig';
+import { ChristmasTown } from './ChristmasTown';
 import { SceneEnvironment } from './Environment';
 import { LocalPlayer } from './LocalPlayer';
 import { Npc } from './Npc';
@@ -18,6 +19,7 @@ import { Pickups } from './Pickups';
 import { Projectiles } from './Projectiles';
 import { RemotePlayer } from './RemotePlayer';
 import { SceneThemeProvider } from './SceneTheme';
+import { WorldBase } from './WorldBase';
 
 function RemotePlayers() {
   const players = useGame((s) => s.players);
@@ -48,9 +50,11 @@ export function Scene() {
 
       <SceneThemeProvider>
         <Backdrop />
+        <WorldBase />
         <Office />
         <PickleCourt />
         <Playground />
+        <ChristmasTown />
       </SceneThemeProvider>
       <ContactShadows position={[0, 0.01, 0]} opacity={0.25} scale={40} blur={2} far={4} resolution={512} frames={1} />
       <LocalPlayer />

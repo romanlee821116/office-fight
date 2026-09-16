@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { BUBBLE_DURATION_MS, CHAT_HISTORY, type NpcHazard } from '@office/shared';
+import { BUBBLE_DURATION_MS, CHAT_HISTORY, type NpcHazard, type SnowTeam } from '@office/shared';
 
 export type Phase = 'lobby' | 'connecting' | 'office' | 'reconnecting';
 
@@ -41,6 +41,20 @@ export interface PlayerInfo {
   /** 手上的武器 id，空字串代表拳頭 */
   weaponId: string;
   ammo: number;
+  /** 是否在打雪仗模式 */
+  snowMode: boolean;
+  /** 打雪仗隊伍（''＝自由模式或沒參加）；有隊伍但 snowMode 為 false 代表已出局 */
+  snowTeam: string;
+}
+
+/** 打雪仗比賽狀態（伺服端同步） */
+export interface SnowMatch {
+  /** idle | waiting | countdown | playing | over */
+  status: string;
+  /** countdown 期間的開打時間戳 */
+  startsAt: number;
+  /** 結算時的獲勝隊伍（'' | 'red' | 'blue'） */
+  winner: string;
 }
 
 /** 路人 NPC 的名牌資料；位置與朝向不進 store，走 runtime 的 npcTarget 逐幀插補 */
@@ -151,6 +165,12 @@ interface GameState {
   court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number };
   /** 本地玩家附近的報名點 */
   nearCourtSlot: 'A' | 'B' | null;
+  /** 打雪仗比賽狀態（伺服端同步） */
+  snow: SnowMatch;
+  /** 本地玩家附近的雪仗報名點 */
+  nearSnowSlot: SnowTeam | null;
+  /** 本地玩家附近可以補雪球的雪堆 */
+  nearSnowPile: boolean;
   /** 地上的武器 */
   pickups: Record<string, PickupInfo>;
   /** 辦公室寵物 */
@@ -200,6 +220,9 @@ interface GameState {
   setSceneThemeLoading: (loading: boolean) => void;
   setCourt: (court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number }) => void;
   setNearCourtSlot: (slot: 'A' | 'B' | null) => void;
+  setSnow: (snow: SnowMatch) => void;
+  setNearSnowSlot: (team: SnowTeam | null) => void;
+  setNearSnowPile: (near: boolean) => void;
   upsertPickup: (pickup: PickupInfo) => void;
   removePickup: (id: string) => void;
   setNpc: (npc: NpcInfo) => void;
@@ -241,6 +264,9 @@ const initial = {
   sceneThemeLoading: false,
   court: { status: 'idle', aId: '', bId: '', scoreA: 0, scoreB: 0 },
   nearCourtSlot: null,
+  snow: { status: 'idle', startsAt: 0, winner: '' },
+  nearSnowSlot: null,
+  nearSnowPile: false,
   pickups: {},
   pets: {},
   npc: { hp: 0, anim: 'idle', carrierId: '', pinnedAt: '' as const, onFire: false },
@@ -309,6 +335,9 @@ export const useGame = create<GameState>((set) => ({
   setWeather: (weather) => set({ weather }),
   setCourt: (court) => set({ court }),
   setNearCourtSlot: (nearCourtSlot) => set((s) => (s.nearCourtSlot === nearCourtSlot ? s : { nearCourtSlot })),
+  setSnow: (snow) => set({ snow }),
+  setNearSnowSlot: (nearSnowSlot) => set((s) => (s.nearSnowSlot === nearSnowSlot ? s : { nearSnowSlot })),
+  setNearSnowPile: (nearSnowPile) => set((s) => (s.nearSnowPile === nearSnowPile ? s : { nearSnowPile })),
   setWeatherEnabled: (weatherEnabled) => {
     try {
       localStorage.setItem(WEATHER_FX_KEY, weatherEnabled ? '1' : '0');

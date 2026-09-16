@@ -9,6 +9,7 @@ import { FightPanel } from './FightPanel';
 import { InteractionBar } from './InteractionBar';
 import { PlayerList } from './PlayerList';
 import { SceneSwitcher } from './SceneSwitcher';
+import { SnowPanel } from './SnowPanel';
 import { StatusEditor } from './StatusEditor';
 
 export function Hud() {
@@ -53,6 +54,7 @@ export function Hud() {
             <SceneSwitcher />
           </div>
           <FightPanel />
+          <SnowPanel />
           <CourtBanner />
         </div>
         <div className="flex flex-col items-end gap-2">

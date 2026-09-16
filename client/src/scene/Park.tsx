@@ -79,12 +79,6 @@ export function Park() {
   const { palette } = useSceneTheme();
   return (
     <group>
-      {/* 地台（延續浮島，讓場地不像浮在空中） */}
-      <mesh position={[PARK_CENTER_X, -0.32, PARK_CENTER_Z]} receiveShadow>
-        <boxGeometry args={[PARK_W + 1.2, 0.6, PARK_D + 1.2]} />
-        <meshStandardMaterial color={palette.base} />
-      </mesh>
-
       {/* 鋪面：外圈跟著場景主題，中間鋪一塊園區草地 */}
       <mesh position={[PARK_CENTER_X, 0.006, PARK_CENTER_Z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[PARK_W, PARK_D]} />

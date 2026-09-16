@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Color, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import { Color, InstancedBufferAttribute, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
 import { bloodQueue } from './runtime';
 
 const POOL = 320;
@@ -28,6 +28,8 @@ const v = new Vector3();
 const scl = new Vector3();
 const HIDDEN = new Matrix4().makeScale(0, 0, 0);
 const SHADES = ['#B3111B', '#8E0C14', '#D42A33'];
+/** 被雪球打中噴的是碎雪，不是血 */
+const SNOW_SHADES = ['#FFFFFF', '#E6EEF7', '#CDDCEA'];
 
 /** 方塊血液粒子：由 bloodQueue 觸發，InstancedMesh 池化更新 */
 export function BloodParticles() {
@@ -37,12 +39,22 @@ export function BloodParticles() {
     [],
   );
   const cursor = useRef(0);
+  /** 每顆粒子的顏色，spawn 時依血／雪重寫（噴的時候才知道是哪一種） */
+  const colors = useMemo(() => new Float32Array(POOL * 3), []);
+  const colorAttr = useRef<InstancedBufferAttribute>(null);
+  const tint = useMemo(() => new Color(), []);
 
-  const spawn = (x: number, z: number, dirX: number, dirZ: number, heavy: boolean) => {
+  const spawn = (x: number, z: number, dirX: number, dirZ: number, heavy: boolean, snow: boolean) => {
     const count = heavy ? PER_BURST_HEAVY : PER_BURST;
+    const shades = snow ? SNOW_SHADES : SHADES;
     for (let i = 0; i < count; i++) {
-      const p = particles[cursor.current];
+      const index = cursor.current;
+      const p = particles[index];
       cursor.current = (cursor.current + 1) % POOL;
+      tint.set(shades[i % shades.length]);
+      colors[index * 3] = tint.r;
+      colors[index * 3 + 1] = tint.g;
+      colors[index * 3 + 2] = tint.b;
       const spread = (Math.random() - 0.5) * 1.6;
       const speed = 1.5 + Math.random() * 2.5;
       // 主要沿擊退方向噴出，加上側向與向上的隨機
@@ -56,6 +68,7 @@ export function BloodParticles() {
       p.spin = Math.random() * Math.PI * 2;
       p.alive = true;
     }
+    if (colorAttr.current) colorAttr.current.needsUpdate = true;
   };
 
   useFrame((_state, dt) => {
@@ -64,7 +77,7 @@ export function BloodParticles() {
 
     while (bloodQueue.length) {
       const b = bloodQueue.shift()!;
-      spawn(b.x, b.z, b.dirX, b.dirZ, b.heavy);
+      spawn(b.x, b.z, b.dirX, b.dirZ, b.heavy, b.snow);
     }
 
     const step = Math.min(dt, 0.05);
@@ -100,22 +113,10 @@ export function BloodParticles() {
     im.instanceMatrix.needsUpdate = true;
   });
 
-  const colors = useMemo(() => {
-    const arr = new Float32Array(POOL * 3);
-    const c = new Color();
-    for (let i = 0; i < POOL; i++) {
-      c.set(SHADES[i % SHADES.length]);
-      arr[i * 3] = c.r;
-      arr[i * 3 + 1] = c.g;
-      arr[i * 3 + 2] = c.b;
-    }
-    return arr;
-  }, []);
-
   return (
     <instancedMesh ref={mesh} args={[undefined, undefined, POOL]} frustumCulled={false}>
       <boxGeometry args={[1, 1, 1]}>
-        <instancedBufferAttribute attach="attributes-color" args={[colors, 3]} />
+        <instancedBufferAttribute ref={colorAttr} attach="attributes-color" args={[colors, 3]} />
       </boxGeometry>
       <meshStandardMaterial vertexColors roughness={0.6} />
     </instancedMesh>

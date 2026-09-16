@@ -107,12 +107,6 @@ export function Playground() {
   const { palette } = useSceneTheme();
   return (
     <group>
-      {/* 地台（延續浮島，讓遊戲區不像浮在空中） */}
-      <mesh position={[PLAY_CENTER_X, -0.32, PLAY_CENTER_Z]} receiveShadow>
-        <boxGeometry args={[PLAY_W + 1.2, 0.6, PLAY_D + 1.2]} />
-        <meshStandardMaterial color={palette.base} />
-      </mesh>
-
       {/* 鋪面：外圈跟著場景主題，中間是遊戲區的軟墊草皮 */}
       <mesh position={[PLAY_CENTER_X, 0.006, PLAY_CENTER_Z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[PLAY_W, PLAY_D]} />

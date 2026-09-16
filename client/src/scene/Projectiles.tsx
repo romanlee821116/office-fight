@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import type { Group } from 'three';
 import { PICKUPS, PROJECTILE_SCALE, type ProjectileEvent } from '@office/shared';
 import { FoodModel } from './FoodModel';
+import { SnowballMesh } from './Snowball';
 import { projectileQueue } from './runtime';
 
 interface Flight extends ProjectileEvent {
@@ -25,9 +26,13 @@ function ProjectileItem({ flight }: { flight: Flight }) {
   const scale = PROJECTILE_SCALE[flight.model] ?? 1;
   return (
     <group ref={group}>
-      <Suspense fallback={null}>
-        <FoodModel model={flight.model} scale={scale} position={[0, -0.1 * scale, 0]} />
-      </Suspense>
+      {flight.model === 'snowball' ? (
+        <SnowballMesh />
+      ) : (
+        <Suspense fallback={null}>
+          <FoodModel model={flight.model} scale={scale} position={[0, -0.1 * scale, 0]} />
+        </Suspense>
+      )}
     </group>
   );
 }

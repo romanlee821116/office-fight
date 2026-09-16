@@ -266,7 +266,7 @@ function seatAt(furnitureId: string, suffix: string, x: number, z: number, rotY:
 }
 
 /**
- * 座位表：椅子（含會議椅、單人沙發）一個座位在中心；沙發兩個座位沿局部 X 分佈；
+ * 座位表：椅子（含會議椅、單人沙發）與小鎮長椅一個座位在中心；沙發兩個座位沿局部 X 分佈；
  * 健身器材各一個使用站（跑步機跑步、臥推椅臥推、瑜珈墊波比跳）。
  * 家具 rotY 的慣例即為使用時角色的朝向（例如辦公椅 rotY=π 面向 -Z 的桌子）。
  */
@@ -283,6 +283,11 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   if (f.id === 'smith-machine') return [seatAt(f.id, '', f.x - 0.4, f.z, Math.PI / 2, 'benchpress-incline', '臥推')];
   // 深蹲架：站到橫桿下深蹲
   if (f.id === 'squat-rack') return [seatAt(f.id, '', f.x, f.z - 0.15, Math.PI, 'squat', '深蹲')];
+  // 小鎮長椅：一人座在椅面中心，起身時站到椅子正前方（後方是椅背）
+  if (f.type === 'xmas' && f.variant === 'bench') {
+    const seat = seatAt(f.id, '', f.x, f.z, rotY);
+    return [{ ...seat, standAt: { x: f.x + Math.sin(rotY) * 0.9, z: f.z + Math.cos(rotY) * 0.9 } }];
+  }
   if (f.type === 'playground') return playgroundSeats(f);
   if (f.id === 'carousel') return carouselSeats();
   return [];

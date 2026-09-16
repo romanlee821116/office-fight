@@ -12,17 +12,21 @@ import {
   RUN_SPEED,
   SEATS,
   SEAT_BY_ID,
+  SNOWFIGHT,
   STOVE,
   SYNC_INTERVAL_MS,
   WALK_SPEED,
+  clampToSnowArena,
   findNearestSeat,
   findNpcHazard,
   getAvatar,
   getWeapon,
   moveWithCollision,
+  nearestSnowPile,
   rideBoardable,
   rideSeatAt,
   type AnimState,
+  type SnowTeam,
 } from '@office/shared';
 import {
   eatHeldFood,
@@ -41,6 +45,8 @@ import {
   sendOvenTake,
   sendPickup,
   sendSit,
+  sendSnowJoin,
+  sendSnowReload,
   sendStand,
   sendStovePlace,
   sendStoveTake,
@@ -50,6 +56,7 @@ import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
 import { FireFX } from './FireFX';
 import { NameTag } from './NameTag';
+import { TeamRing } from './TeamRing';
 import { canAttack, local, npcTarget, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote, triggerSwing } from './runtime';
 import { useKeyboard } from './useKeyboard';
 
@@ -110,6 +117,16 @@ function nearestPickup(x: number, z: number): string | null {
     }
   }
   return best;
+}
+
+/** 站得夠近的雪仗報名點；比賽結算中不提示（等清場） */
+function nearestSnowSlot(x: number, z: number): SnowTeam | null {
+  if (useGame.getState().snow.status === 'over') return null;
+  const dRed = Math.hypot(x - SNOWFIGHT.slotRed.x, z - SNOWFIGHT.slotRed.z);
+  const dBlue = Math.hypot(x - SNOWFIGHT.slotBlue.x, z - SNOWFIGHT.slotBlue.z);
+  if (dRed <= SNOWFIGHT.joinRange && dRed <= dBlue) return 'red';
+  if (dBlue <= SNOWFIGHT.joinRange) return 'blue';
+  return null;
 }
 
 /** 其他玩家（會擋路的）：排除倒地與坐著的人 */
@@ -219,6 +236,16 @@ export function LocalPlayer() {
         const state = useGame.getState();
         const { nearSeatId, nearPickupId, nearPetId } = state;
         local.dance = null;
+        // 站在隊旗上：報名分隊（自由模式的人也可以，這是從自由模式轉進比賽的入口）
+        if (state.nearSnowSlot) {
+          sendSnowJoin(state.nearSnowSlot);
+          return;
+        }
+        // 雪仗模式下剩下能做的只有補雪球；場地裡沒有其他可互動的東西
+        if (local.snowMode) {
+          if (state.nearSnowPile) sendSnowReload();
+          return;
+        }
         if (local.seatId) {
           sendStand();
           standPending.current = true;
@@ -364,8 +391,10 @@ export function LocalPlayer() {
       anim = k.run ? 'run' : 'walk';
       const step = Math.min(dt, 0.05) * speed;
       const next = moveWithCollision({ x: local.x, z: local.z }, dirX * step, dirZ * step, undefined, obstaclePlayers());
-      local.x = next.x;
-      local.z = next.z;
+      // 雪仗模式只能在雪仗場地內移動（伺服端也會夾一次，兩邊用同一條式子）
+      const bounded = local.snowMode ? clampToSnowArena(next.x, next.z) : next;
+      local.x = bounded.x;
+      local.z = bounded.z;
 
       const targetRot = Math.atan2(dirX, dirZ);
       local.rotY = lerpAngle(local.rotY, targetRot, 1 - Math.exp(-dt * 14));
@@ -413,6 +442,10 @@ export function LocalPlayer() {
       const dOven = Math.hypot(local.x - OVEN.x, local.z - OVEN.z);
       useGame.getState().setNearStove(dStove <= STOVE.range && dStove <= dOven);
       useGame.getState().setNearOven(dOven <= OVEN.range && dOven < dStove);
+      // 雪仗：場上時掃雪堆補彈點。報名點在場地內，而走進場地就會自動進入自由模式，
+      // 所以這裡不能用 snowMode 擋——只有「已經有隊伍」的人才不需要再提示報名
+      useGame.getState().setNearSnowPile(local.snowMode && nearestSnowPile(local.x, local.z, SNOWFIGHT.pileRange) !== null);
+      useGame.getState().setNearSnowSlot(local.snowTeam ? null : nearestSnowSlot(local.x, local.z));
       const court = useGame.getState().court;
       const nearA = Math.hypot(local.x - COURT.slotA.x, local.z - COURT.slotA.z) <= COURT.joinRange;
       const nearB = Math.hypot(local.x - COURT.slotB.x, local.z - COURT.slotB.z) <= COURT.joinRange;
@@ -440,6 +473,8 @@ export function LocalPlayer() {
   const weaponId = useGame((s) => (me ? s.players[me.sessionId]?.weaponId : '') ?? '');
   const carrying = useGame((s) => (me ? Object.values(s.pets).some((p) => p.carrierId === me.sessionId) : false));
   const onFire = useGame((s) => (me ? (s.players[me.sessionId]?.onFire ?? false) : false));
+  const snowTeam = useGame((s) => (me ? (s.players[me.sessionId]?.snowTeam ?? '') : ''));
+  const snowMode = useGame((s) => (me ? (s.players[me.sessionId]?.snowMode ?? false) : false));
   if (!me) return null;
   const avatar = getAvatar(me.avatarId);
 
@@ -450,11 +485,12 @@ export function LocalPlayer() {
       </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       <NameTag sessionId={me.sessionId} isMe />
-      {/* 腳下標示圈 */}
+      {/* 腳下標示圈；分隊打雪仗時外圈再加一道隊伍色 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
         <ringGeometry args={[0.38, 0.46, 32]} />
         <meshBasicMaterial color={avatar.color} transparent opacity={0.7} />
       </mesh>
+      {snowTeam && <TeamRing team={snowTeam as SnowTeam} out={!snowMode} />}
     </group>
   );
 }

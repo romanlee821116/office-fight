@@ -25,6 +25,8 @@ import {
   type PlayerState,
   type RespawnEvent,
   type SitPayload,
+  type SnowJoinPayload,
+  type SnowTeam,
   type SwingPayload,
   type SystemMessage,
 } from '@office/shared';
@@ -58,6 +60,9 @@ interface OfficeStateShape {
   courtPlayerB: string;
   courtScoreA: number;
   courtScoreB: number;
+  snowStatus: string;
+  snowStartsAt: number;
+  snowWinner: string;
   weatherCode: number;
   weatherTemp: number;
   weatherIsDay: boolean;
@@ -164,6 +169,8 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         weaponId: player.weaponId,
         ammo: player.ammo,
         onFire: player.onFire,
+        snowMode: player.snowMode,
+        snowTeam: player.snowTeam,
       });
     syncInfo();
 
@@ -176,6 +183,8 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     $(player).listen('weaponId', syncInfo);
     $(player).listen('ammo', syncInfo);
     $(player).listen('onFire', syncInfo);
+    $(player).listen('snowMode', syncInfo);
+    $(player).listen('snowTeam', syncInfo);
 
     if (isMe) {
       // 坐下 / 起身由伺服端決定位置與朝向，本地收到後直接套用
@@ -193,6 +202,21 @@ function bindRoom(r: Room<OfficeStateShape>): void {
       });
       $(player).listen('weaponId', (id) => {
         local.weaponId = id;
+      });
+      // 雪仗狀態同步給 runtime：丟球的冷卻與移動夾制都讀這幾個值。
+      // 自由模式是「走進場地就自動進入」，所以進出場都提示一下，免得東西突然被放下不知道發生什麼事
+      $(player).listen('snowMode', (on) => {
+        const was = local.snowMode;
+        local.snowMode = on;
+        if (on === was) return;
+        if (on && !player.snowTeam) useGame.getState().showToast('⛄ 進入打雪仗場地：手上只剩雪球，空白鍵丟出、雪堆旁按 E 補');
+        else if (!on && !player.snowTeam) useGame.getState().showToast('離開打雪仗場地');
+      });
+      $(player).listen('snowTeam', (team) => {
+        local.snowTeam = (team as SnowTeam) || '';
+      });
+      $(player).listen('ammo', (ammo) => {
+        local.snowAmmo = ammo;
       });
       // 被爐火燒倒沒有 hit 事件，直接看血量歸零
       $(player).listen('hp', (hp) => {
@@ -284,6 +308,17 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   $(r.state).listen('courtScoreA', syncCourt);
   $(r.state).listen('courtScoreB', syncCourt);
 
+  // 打雪仗
+  const syncSnow = () =>
+    useGame.getState().setSnow({
+      status: r.state.snowStatus ?? 'idle',
+      startsAt: r.state.snowStartsAt ?? 0,
+      winner: r.state.snowWinner ?? '',
+    });
+  $(r.state).listen('snowStatus', syncSnow);
+  $(r.state).listen('snowStartsAt', syncSnow);
+  $(r.state).listen('snowWinner', syncSnow);
+
   r.onMessage<CourtShotEvent>(Messages.courtShot, (ev) => {
     courtBall.flight = {
       fromX: ev.fromX,
@@ -359,10 +394,15 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   });
 
   r.onMessage<HitEvent>(Messages.hit, (ev) => {
-    bloodQueue.push({ x: ev.x, z: ev.z, dirX: ev.dirX, dirZ: ev.dirZ, heavy: ev.killed });
+    bloodQueue.push({ x: ev.x, z: ev.z, dirX: ev.dirX, dirZ: ev.dirZ, heavy: ev.killed, snow: ev.snow === true });
     if (ev.targetId !== r.sessionId) return;
     // 自己被打：套用伺服端算好的擊退位置，面向攻擊者
     applyKnockback(ev.toX, ev.toZ, -ev.dirX, -ev.dirZ);
+    // 雪球不會真的打死人：血歸零是出局，退出雪仗模式的狀態由 snowMode 欄位帶回來
+    if (ev.killed && ev.snow) {
+      useGame.getState().showToast('⛄ 你被雪球打出局了');
+      return;
+    }
     if (ev.killed) {
       local.dead = true;
       local.seatId = '';
@@ -559,6 +599,19 @@ export function sendPickup(pickupId: string): void {
 
 export function sendDrop(): void {
   room?.send(Messages.drop);
+}
+
+export function sendSnowJoin(team: SnowTeam): void {
+  const payload: SnowJoinPayload = { team };
+  room?.send(Messages.snowJoin, payload);
+}
+
+export function sendSnowLeave(): void {
+  room?.send(Messages.snowLeave);
+}
+
+export function sendSnowReload(): void {
+  room?.send(Messages.snowReload);
 }
 
 export function sendCourtJoin(side: CourtSide): void {

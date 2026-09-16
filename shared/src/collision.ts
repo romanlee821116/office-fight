@@ -12,8 +12,7 @@ function clamp(v: number, min: number, max: number): number {
 
 /**
  * 將圓形玩家（半徑 r）推出所有實體家具的 AABB 與世界邊界。
- * 世界外框是 L 形：先夾進 WORLD_* 的外接矩形，多出來的那一角
- * 由家具表的 play-void 隱形碰撞塊推回去，不必為此改寫夾制邏輯。
+ * 世界外框是完整長方形，直接夾進 WORLD_*；場地之間的圍籬由家具表的薄碰撞塊負責。
  * 純函式，前後端共用；不使用物理引擎。
  */
 export function resolvePosition(x: number, z: number, r: number = PLAYER_RADIUS): Vec2 {

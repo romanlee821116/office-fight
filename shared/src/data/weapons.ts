@@ -1,4 +1,4 @@
-import { FIGHT, OVEN } from '../constants';
+import { FIGHT, OVEN, SNOWFIGHT } from '../constants';
 import type { WeaponDef } from '../types';
 
 /** 可頌基準尺寸（模型 0.35 x 0.19 x 0.48）；和漢堡差不多大，手持時才不會擋住角色 */
@@ -148,6 +148,33 @@ WEAPONS.push({
   cooldownMs: 999999,
   scale: 1,
   grip: { position: [-0.2, -1.0, 0.15], rotation: [0.3, 0, 0], scale: 1 / 0.65 },
+  spawnable: false,
+});
+
+/**
+ * 雪球：打雪仗模式的唯一武器，由伺服端在進場時配發（不會出現在地上、不能吃）。
+ *
+ * 用 shoot 類而不是 throw 類，因為丟出去的是「一顆彈藥」而不是手上那件武器——
+ * 丟完不該掉在地上變成可撿的道具，而是打光一輪後走去雪堆補（keepWhenEmpty）。
+ * shoot 類走直線，加上兩倍於漢堡的速度，瞄哪裡打哪裡，遠距離也好命中。
+ */
+WEAPONS.push({
+  id: 'snowball',
+  name: '雪球',
+  // 沒有現成的雪球模型，前端用程式生成的白球（Snowball.tsx）
+  model: '',
+  kind: 'shoot',
+  damage: SNOWFIGHT.damage,
+  range: 14,
+  knockback: 1.2,
+  cooldownMs: 450,
+  ammo: SNOWFIGHT.maxBalls,
+  projectileSpeed: 18,
+  projectileModel: 'snowball',
+  keepWhenEmpty: true,
+  scale: 1,
+  // 和漢堡一樣平放在手上
+  grip: { position: [-0.2, -1.05, 0.2], rotation: [0, 0, 0], scale: 1 / 0.65 },
   spawnable: false,
 });
 

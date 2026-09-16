@@ -40,9 +40,11 @@ function localHour(): number {
 }
 
 // ---------- 雨雪粒子 ----------
-const POOL = 340;
+// 世界往 +Z 長到 z=40（小鎮、雪仗場地、遊樂園），灑落範圍跟著加大，
+// 粒子數也一起加，否則同樣的 340 顆攤在兩倍大的範圍上會變得稀稀落落
+const POOL = 460;
 /** 粒子灑落範圍（以場景為中心，避開室內，落在島外與窗外才看得到雨） */
-const AREA = { minX: -30, maxX: 52, minZ: -22, maxZ: 24 };
+const AREA = { minX: -30, maxX: 52, minZ: -22, maxZ: 46 };
 /** 雨雪只避開室內（辦公室＋健身房）；戶外露台與匹克球場會淋雨 */
 const INSIDE = { minX: ROOM_MIN_X - 1, maxX: INDOOR_MAX_X + 1, minZ: ROOM_MIN_Z - 1, maxZ: ROOM_MAX_Z + 1 };
 const TOP_Y = 15;

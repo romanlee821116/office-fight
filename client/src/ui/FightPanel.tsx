@@ -16,7 +16,8 @@ export function FightPanel() {
     return () => clearInterval(id);
   }, [deadUntil]);
 
-  if (!me) return null;
+  // 雪仗模式下手上只有雪球、也不能開格鬥模式，狀態全部由 SnowPanel 顯示
+  if (!me || me.snowMode) return null;
   const on = me.fightMode;
   const dead = deadUntil !== null;
   const inDuel = me.duelWith !== '';

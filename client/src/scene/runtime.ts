@@ -12,6 +12,7 @@ import {
   type NpcHazard,
   type PetAnim,
   type ProjectileEvent,
+  type SnowTeam,
 } from '@office/shared';
 
 /** 其他玩家的目標狀態（由網路更新，RemotePlayer 每幀插補） */
@@ -76,6 +77,12 @@ export const local = {
   eatUntil: 0,
   /** 格鬥 */
   fightMode: false,
+  /** 打雪仗模式（伺服端同步）：手上只有雪球、只能在雪仗場地移動 */
+  snowMode: false,
+  /** 打雪仗隊伍（''＝自由模式） */
+  snowTeam: '' as SnowTeam | '',
+  /** 手上剩幾顆雪球（伺服端同步，本地丟球前先擋一下） */
+  snowAmmo: 0,
   dead: false,
   /** 手上的武器（伺服端同步） */
   weaponId: '',
@@ -112,8 +119,28 @@ export function startEat(): boolean {
   return true;
 }
 
+/**
+ * 本地玩家嘗試丟雪球；回傳是否真的送出。
+ * 冷卻與動畫都跟著雪球的武器定義走，沒球了就丟不出去（要去雪堆補）。
+ */
+export function canThrowSnowball(now: number): boolean {
+  if (!local.snowMode || local.dead || local.seatId || local.knockback) return false;
+  if (local.snowAmmo <= 0) return false;
+  const weapon = getWeapon('snowball');
+  if (!weapon || now - local.lastAttackAt < weapon.cooldownMs) return false;
+  local.lastAttackAt = now;
+  local.attackAnim = 'throw';
+  local.attackUntil = now + 300;
+  local.emote = null;
+  local.dance = null;
+  local.exercise = null;
+  local.eatUntil = 0;
+  return true;
+}
+
 /** 本地玩家嘗試攻擊；回傳是否真的送出（冷卻中則否）。冷卻與動畫依手上武器決定 */
 export function canAttack(now: number): boolean {
+  if (local.snowMode) return canThrowSnowball(now);
   if (!local.fightMode || local.dead || local.seatId || local.knockback) return false;
   local.exercise = null;
   local.eatUntil = 0;
@@ -188,6 +215,8 @@ export interface BloodBurst {
   dirZ: number;
   /** 倒地時噴多一點 */
   heavy: boolean;
+  /** 被雪球打中：噴白色的雪而不是血 */
+  snow: boolean;
 }
 export const bloodQueue: BloodBurst[] = [];
 
@@ -253,6 +282,9 @@ export function resetRuntime(): void {
   local.exercise = null;
   local.eatUntil = 0;
   local.fightMode = false;
+  local.snowMode = false;
+  local.snowTeam = '';
+  local.snowAmmo = 0;
   local.dead = false;
   local.weaponId = '';
   local.attackUntil = 0;

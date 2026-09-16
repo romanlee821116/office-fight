@@ -25,8 +25,7 @@ export const INDOOR_MAX_X = TERRACE_WALL_X;
 
 /**
  * 兒童遊戲區：從露台正前方（z = ROOM_MAX_Z）再往 +Z 延伸的一塊戶外場地，
- * 只佔露台那一段 X，因此世界外框是 L 形——外層仍以 WORLD_* 夾制，
- * 左半邊多出來的 (x < PLAY_MIN_X, z > ROOM_MAX_Z) 由 furniture.ts 的隱形碰撞塊擋住。
+ * 只佔露台那一段 X；左半邊 (x < PLAY_MIN_X, z 8~20) 由聖誕小鎮補滿。
  */
 export const PLAY_MIN_X = TERRACE_WALL_X;
 export const PLAY_MAX_X = ROOM_MAX_X;
@@ -37,8 +36,7 @@ export const PLAY_CENTER_Z = (PLAY_MIN_Z + PLAY_MAX_Z) / 2;
 
 /**
  * 遊樂園：兒童遊戲區再往 +Z 的一塊戶外場地，橫跨健身房與匹克球場的正後方。
- * 只佔 x >= PARK_MIN_X 那一段，左半邊 (x < PARK_MIN_X, z > PLAY_MAX_Z) 一樣由
- * furniture.ts 的隱形碰撞塊擋住，所以世界外框仍是 L 形的外接矩形。
+ * 只佔 x >= PARK_MIN_X 那一段，左半邊 (x < PARK_MIN_X) 由打雪仗場地補滿。
  * 入口在兒童遊戲區南側圍籬的缺口（PARK_GATE_X）。
  */
 export const PARK_MIN_X = GYM_WALL_X;
@@ -51,7 +49,32 @@ export const PARK_CENTER_Z = (PARK_MIN_Z + PARK_MAX_Z) / 2;
 export const PARK_GATE_X = 30;
 export const PARK_GATE_W = 4;
 
-/** 世界外框（含遊戲區與遊樂園）：碰撞最外層的夾制範圍 */
+/**
+ * 聖誕小鎮：辦公室／健身房正前方（z = ROOM_MAX_Z）那一整條，補滿兒童遊戲區左邊的空缺。
+ * 走出辦公室大門就是小鎮，往南（+Z）穿過圍籬缺口即是打雪仗場地。
+ */
+export const XMAS_MIN_X = ROOM_MIN_X;
+export const XMAS_MAX_X = PLAY_MIN_X;
+export const XMAS_MIN_Z = ROOM_MAX_Z;
+export const XMAS_MAX_Z = PLAY_MAX_Z;
+export const XMAS_CENTER_X = (XMAS_MIN_X + XMAS_MAX_X) / 2;
+export const XMAS_CENTER_Z = (XMAS_MIN_Z + XMAS_MAX_Z) / 2;
+
+/**
+ * 打雪仗場地：小鎮再往 +Z，與遊樂園並排的最後一塊，補滿後世界外框就是完整長方形。
+ * 24 x 20m，和遊樂園（29 x 20m）同樣深、面積相當。
+ */
+export const SNOW_MIN_X = ROOM_MIN_X;
+export const SNOW_MAX_X = PARK_MIN_X;
+export const SNOW_MIN_Z = PLAY_MAX_Z;
+export const SNOW_MAX_Z = PARK_MAX_Z;
+export const SNOW_CENTER_X = (SNOW_MIN_X + SNOW_MAX_X) / 2;
+export const SNOW_CENTER_Z = (SNOW_MIN_Z + SNOW_MAX_Z) / 2;
+/** 從小鎮走進雪仗場地的缺口中心與寬度（開在 cabin-a 與 cabin-b 之間的巷子正下方） */
+export const SNOW_GATE_X = -3.75;
+export const SNOW_GATE_W = 4.5;
+
+/** 世界外框：四塊場地拼起來剛好是 x -12~41、z -8~40 的長方形 */
 export const WORLD_MIN_X = ROOM_MIN_X;
 export const WORLD_MAX_X = ROOM_MAX_X;
 export const WORLD_MIN_Z = ROOM_MIN_Z;
@@ -86,6 +109,55 @@ export const FIGHT = {
   staggerMs: 350,
   respawnMs: 3000,
 };
+
+/**
+ * 打雪仗。場地就是 SNOW_*（x -12～12、z 20～40），中線 z = SNOW_CENTER_Z：
+ * 北半場歸紅隊、南半場歸藍隊（只是報名點的位置，不限制誰能站哪邊）。
+ *
+ * 雪仗模式是一個獨立於格鬥模式的狀態：手上只會有雪球、只打得到同樣在雪仗模式的人、
+ * 而且走不出場地。血量沿用 FIGHT.maxHp，但歸零不是倒地而是「出局」。
+ */
+export const SNOWFIGHT = {
+  /** 一次最多帶幾顆雪球（剛好等於打倒一個人所需的顆數，所以一輪彈藥最多解決一個對手） */
+  maxBalls: 5,
+  /** 一顆的傷害：滿血 FIGHT.maxHp（200），五顆出局 */
+  damage: 40,
+  /** 走到雪堆旁按 E 補滿，以及兩次補彈之間的最短間隔 */
+  pileRange: 1.8,
+  reloadCooldownMs: 600,
+  /**
+   * 報名點：紅隊在北側入口內、藍隊在南側底線。
+   * 兩個點都避開了既有的雪人、雪橇與拐杖糖裝飾（見 christmasTownModel 的 decorations）。
+   */
+  slotRed: { x: 3, z: 21.5 },
+  slotBlue: { x: -3, z: 38.5 },
+  joinRange: 1.4,
+  /** 兩隊都有人之後的開賽倒數 */
+  countdownMs: 5000,
+  /** 分出勝負後結算畫面停留多久才清場 */
+  overResetMs: 8000,
+};
+
+/** 隊伍顏色：地上的隊伍圈與 HUD 共用同一組色票 */
+export const SNOW_TEAM_COLOR = { red: '#D9534F', blue: '#3E8ED0' } as const;
+export const SNOW_TEAM_LABEL = { red: '紅隊', blue: '藍隊' } as const;
+
+/** 座標是否落在雪仗場地內（margin 為往外放寬的公尺數） */
+export function inSnowArena(x: number, z: number, margin = 0): boolean {
+  return x >= SNOW_MIN_X - margin && x <= SNOW_MAX_X + margin && z >= SNOW_MIN_Z - margin && z <= SNOW_MAX_Z + margin;
+}
+
+/**
+ * 雪仗模式只能在場地內移動：把座標夾回場地（留出玩家半徑）。
+ * 場地四周除了北側那個通往小鎮的缺口都有碰撞盒，所以這個夾制實際上只在缺口生效——
+ * 想離開就得先退出雪仗模式。前後端共用同一條，才不會一邊走得出去一邊被拉回來。
+ */
+export function clampToSnowArena(x: number, z: number, r: number = PLAYER_RADIUS): { x: number; z: number } {
+  return {
+    x: x < SNOW_MIN_X + r ? SNOW_MIN_X + r : x > SNOW_MAX_X - r ? SNOW_MAX_X - r : x,
+    z: z < SNOW_MIN_Z + r ? SNOW_MIN_Z + r : z > SNOW_MAX_Z - r ? SNOW_MAX_Z - r : z,
+  };
+}
 
 /** 地上武器生成 */
 export const PICKUPS = {

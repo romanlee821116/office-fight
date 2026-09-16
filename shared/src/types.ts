@@ -168,6 +168,13 @@ export interface PlayerState {
   ammo: number;
   /** 被爐火燒到，頭上冒火中 */
   onFire: boolean;
+  /** 是否在打雪仗模式（手上只有雪球、只能在雪仗場地移動） */
+  snowMode: boolean;
+  /**
+   * 打雪仗隊伍：'' | 'red' | 'blue'。'' 代表自由打雪仗（沒分隊）。
+   * 有隊伍但 snowMode 為 false，代表這場比賽已經出局（比賽結束才清空）。
+   */
+  snowTeam: string;
   lastSeen: number;
 }
 
@@ -191,6 +198,8 @@ export interface WeaponDef {
   projectileSpeed?: number;
   /** 投射物模型（shoot 類；throw 類飛出去的是武器本身） */
   projectileModel?: string;
+  /** 彈藥用完後仍留在手上（雪球用完要走去雪堆補，手不會空掉） */
+  keepWhenEmpty?: boolean;
   /** 顯示縮放（地上與投射物） */
   scale: number;
   /** 手持時相對右手臂節點的位置 / 旋轉（角色模型單位） */
@@ -251,6 +260,8 @@ export interface HitEvent {
   toZ: number;
   hp: number;
   killed: boolean;
+  /** 被雪球打中：粒子噴白色的雪而不是血 */
+  snow: boolean;
 }
 
 /** C→S：決鬥操作 */
@@ -318,6 +329,14 @@ export interface PetFlightEvent {
   toX: number;
   toZ: number;
   durationMs: number;
+}
+
+/** 打雪仗的隊伍 */
+export type SnowTeam = 'red' | 'blue';
+
+/** C→S：報名雪仗隊伍（自由模式是走進場地自動進入，不走這條） */
+export interface SnowJoinPayload {
+  team: SnowTeam;
 }
 
 /** 匹克球：報名側別 */
@@ -395,7 +414,9 @@ export type FurnitureType =
   /** 遊戲區設施：只提供碰撞，外觀由 Playground 以 playground.glb 繪製 */
   | 'playground'
   /** 遊樂園設施：只提供碰撞，外觀由 Park 以 park/ 底下的模型繪製 */
-  | 'park';
+  | 'park'
+  /** 聖誕小鎮／打雪仗場地：只提供碰撞，外觀由 ChristmasTown 以 holiday/ 底下的模型繪製 */
+  | 'xmas';
 
 export interface FurnitureDef {
   id: string;
@@ -416,6 +437,27 @@ export interface FurnitureDef {
   solid?: boolean;
   /** 模型配方鍵（覆蓋 type），例如 'meeting-chair'、'trashcan' */
   variant?: string;
+}
+
+/**
+ * 聖誕小鎮的一棟木屋（Kenney Holiday Kit 模組零件）。
+ * 兩格寬、len 格長，局部 +Z 為正面；rotY 只用 0 / ±π/2 / π。
+ */
+export interface CabinDef {
+  id: string;
+  x: number;
+  z: number;
+  rotY: number;
+  /** 沿屋脊方向的格數 */
+  len: number;
+  /** 雪白屋頂或原色屋頂 */
+  roof: 'snow' | 'plain';
+  /** 大門開在正面哪一格（-0.5 或 0.5），另一格開窗 */
+  doorX: number;
+  /** 煙囪長在屋脊的哪一端（-1 / 1），省略代表沒有煙囪 */
+  chimneyEnd?: -1 | 1;
+  /** 側牆掛花圈 */
+  wreath?: boolean;
 }
 
 /** 訊息事件名稱 */
@@ -448,6 +490,9 @@ export const Messages = {
   ovenTake: 'ovenTake',
   eat: 'eat',
   feedPet: 'feedPet',
+  snowJoin: 'snowJoin',
+  snowLeave: 'snowLeave',
+  snowReload: 'snowReload',
   courtJoin: 'courtJoin',
   courtLeave: 'courtLeave',
   swing: 'swing',

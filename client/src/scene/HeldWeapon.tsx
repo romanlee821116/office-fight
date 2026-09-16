@@ -3,6 +3,7 @@ import { createPortal } from '@react-three/fiber';
 import type { Object3D } from 'three';
 import { getWeapon } from '@office/shared';
 import { FoodModel } from './FoodModel';
+import { SnowballMesh } from './Snowball';
 
 interface HeldWeaponProps {
   weaponId: string;
@@ -38,6 +39,10 @@ export function HeldWeapon({ weaponId, hand }: HeldWeaponProps) {
     weapon.id === 'paddle' ? (
       <group position={weapon.grip.position} rotation={weapon.grip.rotation} scale={weapon.grip.scale}>
         <Paddle />
+      </group>
+    ) : weapon.id === 'snowball' ? (
+      <group position={weapon.grip.position} rotation={weapon.grip.rotation} scale={weapon.grip.scale}>
+        <SnowballMesh />
       </group>
     ) : (
       <Suspense fallback={null}>

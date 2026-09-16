@@ -21,6 +21,11 @@ import {
   findNpcHazard,
   getPet,
   SHIP,
+  SNOWFIGHT,
+  SNOW_TEAM_LABEL,
+  clampToSnowArena,
+  inSnowArena,
+  nearestSnowPile,
   rideBoardable,
   rideSeatAt,
   shipAtDock,
@@ -67,6 +72,8 @@ import {
   type ProjectileEvent,
   type RespawnEvent,
   type SitPayload,
+  type SnowJoinPayload,
+  type SnowTeam,
   type SwingPayload,
   type SystemMessage,
   type WeaponDef,
@@ -89,6 +96,9 @@ const FIST: WeaponDef = {
 };
 
 const ANIMS = new Set<string>(ANIM_STATES);
+
+/** 掃描誰走進 / 走出雪仗場地的間隔 */
+const SNOW_ARENA_TICK_MS = 200;
 
 /** 進場密碼：設定 JOIN_CODE 環境變數後，所有人進場都需輸入（公開網址部署時務必設定） */
 const JOIN_CODE = (process.env.JOIN_CODE ?? '').trim();
@@ -113,6 +123,13 @@ interface ClientMeta {
   lastBurnAt: number;
   /** 最後一次被海盜船撞到的時間 */
   lastShipHitAt: number;
+  /** 最後一次在雪堆補雪球的時間 */
+  lastSnowReloadAt: number;
+  /**
+   * 出局後必須先離開雪仗場地，才會再次自動進入自由雪仗模式。
+   * 沒有這個旗標的話，被打出局的人會站在原地立刻被 tickSnowArena 拉回場上。
+   */
+  snowReentry: boolean;
   /** 分頁切到背景的時間戳，null 代表分頁在前景 */
   hiddenSince: number | null;
   /** 已發出閒置警告，避免重複發送 */
@@ -203,6 +220,8 @@ export class OfficeRoom extends Room<OfficeState> {
   private lastSwingAt = new Map<string, number>();
   /** 下一分由誰發球 */
   private courtServeSide: CourtSide = 'A';
+  /** 雪仗比賽的倒數 / 結算清場計時器（同時只會有一個） */
+  private snowTimer: { clear(): void } | null = null;
   private stoveGoneTimer: { clear(): void } | null = null;
   private stovePlacedBy = '';
   private ovenTimer: { clear(): void } | null = null;
@@ -245,6 +264,9 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage(Messages.ovenPlace, (client) => this.handleOvenPlace(client));
     this.onPlayerMessage(Messages.ovenTake, (client) => this.handleOvenTake(client));
     this.onPlayerMessage(Messages.eat, (client) => this.handleEat(client));
+    this.onPlayerMessage<SnowJoinPayload>(Messages.snowJoin, (client, payload) => this.handleSnowJoin(client, payload));
+    this.onPlayerMessage(Messages.snowLeave, (client) => this.handleSnowLeave(client));
+    this.onPlayerMessage(Messages.snowReload, (client) => this.handleSnowReload(client));
     this.onPlayerMessage<{ side: CourtSide }>(Messages.courtJoin, (client, payload) => this.handleCourtJoin(client, payload));
     this.onPlayerMessage(Messages.courtLeave, (client) => this.handleCourtLeave(client));
     this.onPlayerMessage<SwingPayload>(Messages.swing, (client, payload) => this.handleSwing(client, payload));
@@ -266,6 +288,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.clock.setInterval(() => this.tickRides(), SYNC_INTERVAL_MS);
     this.clock.setInterval(() => this.tickShipSweep(), SYNC_INTERVAL_MS);
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
+    this.clock.setInterval(() => this.tickSnowArena(), SNOW_ARENA_TICK_MS);
 
     void this.refreshWeather();
     this.clock.setInterval(() => void this.refreshWeather(), WEATHER.refreshMs);
@@ -369,6 +392,8 @@ export class OfficeRoom extends Room<OfficeState> {
       rideTimer: null,
       lastBurnAt: 0,
       lastShipHitAt: 0,
+      lastSnowReloadAt: 0,
+      snowReentry: false,
       hiddenSince: null,
       idleWarned: false,
     });
@@ -406,6 +431,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.dropCarriedPet(player.id);
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
+    this.leaveSnow(player, 'forfeit');
     this.state.players.delete(client.sessionId);
     this.meta.delete(client.sessionId);
     this.broadcastSystem(`${name} 離開了辦公室`);
@@ -438,8 +464,10 @@ export class OfficeRoom extends Room<OfficeState> {
     }
 
     const resolved = resolveAll(x, z, this.obstaclePlayers(player.id));
-    player.x = resolved.x;
-    player.z = resolved.z;
+    // 雪仗模式只能在場地內移動（北側缺口沒有碰撞盒，靠這條夾回來）
+    const bounded = player.snowMode ? clampToSnowArena(resolved.x, resolved.z) : resolved;
+    player.x = bounded.x;
+    player.z = bounded.z;
     player.rotY = rotY;
     player.anim = ANIMS.has(anim) ? anim : 'idle';
     meta.lastActivityAt = now;
@@ -450,6 +478,7 @@ export class OfficeRoom extends Room<OfficeState> {
     const player = this.state.players.get(client.sessionId);
     const meta = this.meta.get(client.sessionId);
     if (!player || !meta || player.seatId || player.hp <= 0 || player.duelWith || this.courtSideOf(player.id)) return;
+    if (player.snowMode) return; // 雪仗中不能坐下
 
     const seat = SEAT_BY_ID.get(payload?.seatId ?? '');
     if (!seat) return;
@@ -531,6 +560,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.dropCarriedPet(player.id);
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
+    this.leaveSnow(player, 'forfeit');
     this.broadcastSystem(message);
     logger.info(`${reason}：${player.name}`);
     const meta = this.meta.get(player.id);
@@ -541,7 +571,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
   private handleToggleFight(client: Client, on: boolean): void {
     const player = this.state.players.get(client.sessionId);
-    if (!player || player.hp <= 0 || player.duelWith) return;
+    if (!player || player.hp <= 0 || player.duelWith || player.snowMode) return;
     player.fightMode = Boolean(on);
     if (player.fightMode) player.hp = FIGHT.maxHp;
   }
@@ -550,8 +580,9 @@ export class OfficeRoom extends Room<OfficeState> {
   private canTarget(attacker: Player, other: Player): boolean {
     if (other === attacker || !other.fightMode || other.hp <= 0) return false;
     if (attacker.duelWith ? other.id !== attacker.duelWith : other.duelWith !== '') return false;
-    // 匹克球比賽中的雙方不參與格鬥
+    // 匹克球比賽中的雙方、以及打雪仗的人都不參與一般格鬥
     if (this.courtSideOf(attacker.id) || this.courtSideOf(other.id)) return false;
+    if (attacker.snowMode || other.snowMode) return false;
     return true;
   }
 
@@ -559,9 +590,14 @@ export class OfficeRoom extends Room<OfficeState> {
   private handleAttack(client: Client): void {
     const attacker = this.state.players.get(client.sessionId);
     const meta = this.meta.get(client.sessionId);
-    if (!attacker || !meta || !attacker.fightMode || attacker.hp <= 0 || attacker.seatId) return;
+    if (!attacker || !meta || attacker.hp <= 0 || attacker.seatId) return;
+    if (!attacker.fightMode && !attacker.snowMode) return;
 
     if (this.courtSideOf(attacker.id)) return; // 比賽中空白鍵是揮拍
+    if (attacker.snowMode) {
+      this.throwSnowball(attacker, meta);
+      return;
+    }
     const weapon = WEAPON_BY_ID.get(attacker.weaponId) ?? FIST;
     const now = Date.now();
     if (now - meta.lastAttackAt < weapon.cooldownMs) return;
@@ -681,7 +717,7 @@ export class OfficeRoom extends Room<OfficeState> {
       attacker.ammo = 0;
     } else {
       attacker.ammo = Math.max(0, attacker.ammo - 1);
-      if (attacker.ammo === 0) attacker.weaponId = '';
+      if (attacker.ammo === 0 && !weapon.keepWhenEmpty) attacker.weaponId = '';
     }
 
     const targetId = target?.id ?? null;
@@ -714,19 +750,22 @@ export class OfficeRoom extends Room<OfficeState> {
     }, flightMs);
   }
 
-  /** 結算一次命中：扣血、擊退、倒地、廣播 */
+  /** 結算一次命中：扣血、擊退、倒地（雪仗則是出局）、廣播 */
   private applyHit(attacker: Player, target: Player, dirX: number, dirZ: number, weapon: WeaponDef, impactOffset: number): void {
     const now = Date.now();
     const targetMeta = this.meta.get(target.id);
+    const snow = weapon.id === 'snowball';
 
     if (target.seatId) target.seatId = '';
-    const to = moveWithCollision(
+    const knocked = moveWithCollision(
       { x: target.x, z: target.z },
       dirX * weapon.knockback,
       dirZ * weapon.knockback,
       undefined,
       this.obstaclePlayers(target.id),
     );
+    // 被雪球打退也不能被推出場地
+    const to = target.snowMode ? clampToSnowArena(knocked.x, knocked.z) : knocked;
     const impactX = impactOffset ? attacker.x + dirX * impactOffset : target.x;
     const impactZ = impactOffset ? attacker.z + dirZ * impactOffset : target.z;
     target.x = to.x;
@@ -739,7 +778,13 @@ export class OfficeRoom extends Room<OfficeState> {
     }
 
     const killed = target.hp === 0;
-    if (killed) {
+    // 出局會把血補回滿，所以事件裡的血量要在那之前先留一份
+    const hpAfterHit = target.hp;
+    if (killed && snow) {
+      // 雪仗不會真的死：血歸零就是出局，人留在原地自己走出場
+      target.anim = 'hit';
+      this.eliminateSnow(target, attacker);
+    } else if (killed) {
       target.anim = 'dead';
       this.dropWeapon(target);
       this.dropCarriedPet(target.id);
@@ -762,8 +807,9 @@ export class OfficeRoom extends Room<OfficeState> {
       dirZ,
       toX: to.x,
       toZ: to.z,
-      hp: target.hp,
+      hp: hpAfterHit,
       killed,
+      snow,
     };
     this.broadcast(Messages.hit, event);
   }
@@ -815,7 +861,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
   private handlePickup(client: Client, payload: PickupPayload): void {
     const player = this.state.players.get(client.sessionId);
-    if (!player || player.hp <= 0 || player.seatId) return;
+    if (!player || player.hp <= 0 || player.seatId || player.snowMode) return; // 雪仗中手上只能有雪球
     const pickup = this.state.pickups.get(payload?.pickupId ?? '');
     if (!pickup) return;
     if (Math.hypot(pickup.x - player.x, pickup.z - player.z) > PICKUPS.interactDistance + 0.6) return;
@@ -833,14 +879,15 @@ export class OfficeRoom extends Room<OfficeState> {
 
   private handleDrop(client: Client): void {
     const player = this.state.players.get(client.sessionId);
-    if (!player || player.hp <= 0) return;
+    if (!player || player.hp <= 0 || player.snowMode) return; // 雪球不能丟在地上
     this.dropWeapon(player);
   }
 
   /** 把手上的武器放到腳邊（蛋糕若已用過幾發仍可撿，彈藥重算） */
   private dropWeapon(player: Player): void {
     if (!player.weaponId) return;
-    if (player.weaponId === 'paddle') {
+    // 球拍與雪球都是伺服端配發的，不會變成地上的道具
+    if (player.weaponId === 'paddle' || player.weaponId === 'snowball') {
       player.weaponId = '';
       player.ammo = 0;
       return;
@@ -852,12 +899,16 @@ export class OfficeRoom extends Room<OfficeState> {
 
   private handleDuel(client: Client, action: DuelAction): void {
     const me = this.state.players.get(client.sessionId);
-    if (!me || !action) return;
+    if (!me || !action || me.snowMode) return;
 
     if (action.action === 'invite') {
       const target = this.state.players.get(action.targetId);
       if (!target || target === me || me.duelWith || me.hp <= 0) return;
       if (this.courtSideOf(me.id) || this.courtSideOf(target.id)) return; // 比賽中不打擾
+      if (target.snowMode) {
+        this.sendDuel(client, { kind: 'declined', byId: target.id, byName: target.name, reason: 'busy' });
+        return;
+      }
       if (target.duelWith || target.hp <= 0 || this.invites.has(target.id) || this.hasOutgoingInvite(me.id)) {
         this.sendDuel(client, { kind: 'declined', byId: target.id, byName: target.name, reason: 'busy' });
         return;
@@ -1298,6 +1349,7 @@ export class OfficeRoom extends Room<OfficeState> {
       toZ: to.z,
       hp: npc.hp,
       killed,
+      snow: false,
     };
     this.broadcast(Messages.hit, event);
   }
@@ -1476,6 +1528,7 @@ export class OfficeRoom extends Room<OfficeState> {
         toZ: to.z,
         hp: player.hp,
         killed,
+        snow: false,
       };
       player.x = to.x;
       player.z = to.z;
@@ -1807,6 +1860,7 @@ export class OfficeRoom extends Room<OfficeState> {
       toZ: to.z,
       hp: pet.hp,
       killed,
+      snow: false,
     };
     this.broadcast(Messages.hit, event);
   }
@@ -2131,6 +2185,283 @@ export class OfficeRoom extends Room<OfficeState> {
     shot.timer.clear();
     this.courtShot = null;
     this.launchShot(player.id, side === 'A' ? 'B' : 'A', ball.x, ball.z, lateral);
+  }
+
+  // ---------- 打雪仗 ----------
+
+  /**
+   * 每 SNOW_ARENA_TICK_MS 掃一次誰在雪仗場地裡。
+   * 走進場地就自動進入自由雪仗模式（手上的東西會被放下），走出去就自動退出。
+   *
+   * 出局的人不會被立刻拉回場上：分隊出局者因為 snowTeam 還在（比賽結束才清空），
+   * 自由模式出局者則靠 meta.snowReentry 擋著，要走出場地一次才會重新開始。
+   */
+  private tickSnowArena(): void {
+    for (const player of this.state.players.values()) {
+      const meta = this.meta.get(player.id);
+      if (!meta) continue;
+      const inside = inSnowArena(player.x, player.z);
+      if (!inside) {
+        meta.snowReentry = false;
+        if (player.snowMode) this.leaveSnow(player, 'exit');
+        continue;
+      }
+      if (player.snowMode || player.snowTeam || meta.snowReentry) continue;
+      if (player.hp <= 0 || player.seatId || player.duelWith || this.courtSideOf(player.id)) continue;
+      this.enterSnow(player, '');
+    }
+  }
+
+  /** 某一隊還活著（沒出局）的人數 */
+  private snowAlive(team: SnowTeam): number {
+    let count = 0;
+    for (const p of this.state.players.values()) {
+      if (p.snowTeam === team && p.snowMode) count += 1;
+    }
+    return count;
+  }
+
+  /**
+   * 進入雪仗模式：手上的東西（食物、寵物、路人）全部放下，改配發雪球。
+   * team 為空字串代表自由打雪仗。
+   */
+  private enterSnow(player: Player, team: SnowTeam | ''): void {
+    this.dropCarriedPet(player.id);
+    this.releaseNpc(player.id);
+    this.leaveCourtIfPlaying(player.id, true);
+    this.dropWeapon(player);
+    player.seatId = '';
+    player.fightMode = false;
+    player.onFire = false;
+    player.snowMode = true;
+    player.snowTeam = team;
+    player.hp = FIGHT.maxHp;
+    player.weaponId = 'snowball';
+    player.ammo = SNOWFIGHT.maxBalls;
+    const meta = this.meta.get(player.id);
+    if (meta) {
+      meta.snowReentry = false;
+      meta.respawnTimer?.clear();
+      meta.respawnTimer = null;
+      meta.rideTimer?.clear();
+      meta.rideTimer = null;
+    }
+  }
+
+  /**
+   * 退出雪仗模式。reason 決定要不要把「出局」算在隊伍頭上：
+   * 'out' 是被雪球打出局、'exit' 是自己走出場地或按退出、'forfeit' 是被擊倒或離線。
+   */
+  private leaveSnow(player: Player, reason: 'out' | 'exit' | 'forfeit'): void {
+    if (!player.snowMode && !player.snowTeam) return;
+    const wasPlaying = player.snowMode;
+    const team = player.snowTeam as SnowTeam | '';
+    player.snowMode = false;
+    if (player.weaponId === 'snowball') {
+      player.weaponId = '';
+      player.ammo = 0;
+    }
+    if (reason === 'out') {
+      // 出局：分隊的人保留 snowTeam 當計分板用，比賽結束才清掉
+      const meta = this.meta.get(player.id);
+      if (meta && !team) meta.snowReentry = true;
+    } else {
+      player.snowTeam = '';
+    }
+    if (team && wasPlaying) this.updateSnowMatch();
+  }
+
+  /** 被雪球打到血歸零：出局，人留在原地（不倒地、不傳送） */
+  private eliminateSnow(target: Player, attacker: Player): void {
+    const team = target.snowTeam as SnowTeam | '';
+    target.hp = FIGHT.maxHp;
+    this.leaveSnow(target, 'out');
+    if (team) {
+      this.broadcastSystem(`⛄ ${attacker.name} 把 ${target.name}（${SNOW_TEAM_LABEL[team]}）打出局了`);
+    } else {
+      this.broadcastSystem(`⛄ ${attacker.name} 用雪球把 ${target.name} 打退出雪仗`);
+    }
+  }
+
+  /**
+   * 丟雪球。命中判定沿用投擲武器那一套（面向方向的走廊找最近目標，
+   * 飛到目標時才結算），差別只在目標過濾與「不會掉在地上變成道具」。
+   */
+  private throwSnowball(attacker: Player, meta: ClientMeta): void {
+    const weapon = WEAPON_BY_ID.get('snowball');
+    if (!weapon) return;
+    if (attacker.ammo <= 0) return; // 沒球了，去雪堆補
+    // 分隊比賽要等開打；自由模式隨時可以丟
+    if (attacker.snowTeam && this.state.snowStatus !== 'playing') return;
+    const now = Date.now();
+    if (now - meta.lastAttackAt < weapon.cooldownMs) return;
+    meta.lastAttackAt = now;
+
+    const fx = Math.sin(attacker.rotY);
+    const fz = Math.cos(attacker.rotY);
+    let target: Player | null = null;
+    let travel = weapon.range;
+    for (const other of this.state.players.values()) {
+      if (!this.canSnowTarget(attacker, other)) continue;
+      const dx = other.x - attacker.x;
+      const dz = other.z - attacker.z;
+      const along = dx * fx + dz * fz;
+      if (along <= 0.2 || along > travel) continue;
+      if (Math.abs(dx * fz - dz * fx) > PICKUPS.corridorHalfWidth) continue;
+      target = other;
+      travel = along;
+    }
+
+    attacker.ammo = Math.max(0, attacker.ammo - 1);
+    const speed = weapon.projectileSpeed ?? 18;
+    const event: ProjectileEvent = {
+      id: `p${++this.projectileSeq}`,
+      shooterId: attacker.id,
+      weaponId: weapon.id,
+      model: weapon.projectileModel ?? '',
+      kind: 'shoot',
+      fromX: attacker.x,
+      fromZ: attacker.z,
+      dirX: fx,
+      dirZ: fz,
+      distance: travel,
+      speed,
+    };
+    this.broadcast(Messages.projectile, event);
+
+    const attackerId = attacker.id;
+    const targetId = target?.id ?? null;
+    this.clock.setTimeout(() => {
+      const shooter = this.state.players.get(attackerId);
+      const victim = targetId ? this.state.players.get(targetId) : null;
+      if (!shooter || !victim || !this.canSnowTarget(shooter, victim)) return;
+      if (shooter.snowTeam && this.state.snowStatus !== 'playing') return;
+      this.applyHit(shooter, victim, fx, fz, weapon, 0);
+    }, (travel / speed) * 1000);
+  }
+
+  /**
+   * 雪球命中條件：雙方都在雪仗模式，而且「兩邊都沒分隊」或「分屬不同隊」。
+   * 自由模式的人打不到比賽中的隊員（反之亦然），比賽才不會被路過的人攪局。
+   */
+  private canSnowTarget(attacker: Player, other: Player): boolean {
+    if (other === attacker || !attacker.snowMode || !other.snowMode) return false;
+    if (!attacker.snowTeam || !other.snowTeam) return attacker.snowTeam === other.snowTeam;
+    return attacker.snowTeam !== other.snowTeam;
+  }
+
+  /** 走到報名點按 E 加入隊伍；比賽進行中也可以中途加入 */
+  private handleSnowJoin(client: Client, payload: SnowJoinPayload): void {
+    const player = this.state.players.get(client.sessionId);
+    const team = payload?.team;
+    if (!player || (team !== 'red' && team !== 'blue')) return;
+    if (player.hp <= 0 || player.duelWith || player.snowTeam) return;
+    if (this.state.snowStatus === 'over') return; // 結算中，等清場
+    const slot = team === 'red' ? SNOWFIGHT.slotRed : SNOWFIGHT.slotBlue;
+    if (Math.hypot(player.x - slot.x, player.z - slot.z) > SNOWFIGHT.joinRange + 0.6) return;
+
+    this.enterSnow(player, team);
+    this.broadcastSystem(`⛄ ${player.name} 加入了${SNOW_TEAM_LABEL[team]}`);
+    this.updateSnowMatch();
+  }
+
+  /** 自行退出：比賽進行中退出視為出局，其餘就是單純離開雪仗模式 */
+  private handleSnowLeave(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player || !player.snowMode) return;
+    const team = player.snowTeam as SnowTeam | '';
+    const inMatch = team !== '' && (this.state.snowStatus === 'playing' || this.state.snowStatus === 'countdown');
+    this.leaveSnow(player, inMatch ? 'out' : 'exit');
+    if (inMatch) this.broadcastSystem(`⛄ ${player.name} 退出了雪仗（${SNOW_TEAM_LABEL[team as SnowTeam]}少一人）`);
+  }
+
+  /** 走到雪堆旁按 E 把雪球補滿三顆 */
+  private handleSnowReload(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    const meta = this.meta.get(client.sessionId);
+    if (!player || !meta || !player.snowMode || player.hp <= 0) return;
+    if (player.ammo >= SNOWFIGHT.maxBalls) return;
+    const now = Date.now();
+    if (now - meta.lastSnowReloadAt < SNOWFIGHT.reloadCooldownMs) return;
+    if (!nearestSnowPile(player.x, player.z, SNOWFIGHT.pileRange + 0.6)) return;
+    meta.lastSnowReloadAt = now;
+    player.weaponId = 'snowball';
+    player.ammo = SNOWFIGHT.maxBalls;
+  }
+
+  /** 依兩隊目前的人數推進比賽狀態（報名、出局、離線都會呼叫） */
+  private updateSnowMatch(): void {
+    const st = this.state;
+    if (st.snowStatus === 'over') return; // 結算畫面中，等清場
+    const red = this.snowAlive('red');
+    const blue = this.snowAlive('blue');
+
+    if (st.snowStatus === 'playing') {
+      if (red === 0 && blue === 0) this.resetSnowMatch();
+      else if (red === 0) this.finishSnowMatch('blue');
+      else if (blue === 0) this.finishSnowMatch('red');
+      return;
+    }
+    if (red > 0 && blue > 0) {
+      if (st.snowStatus !== 'countdown') this.startSnowCountdown();
+      return;
+    }
+    if (red > 0 || blue > 0) {
+      this.snowTimer?.clear();
+      this.snowTimer = null;
+      st.snowStatus = 'waiting';
+      st.snowStartsAt = 0;
+      st.snowWinner = '';
+      return;
+    }
+    this.resetSnowMatch();
+  }
+
+  private startSnowCountdown(): void {
+    const st = this.state;
+    this.snowTimer?.clear();
+    st.snowStatus = 'countdown';
+    st.snowWinner = '';
+    st.snowStartsAt = Date.now() + SNOWFIGHT.countdownMs;
+    this.broadcastSystem(`⛄ 打雪仗即將開始：紅隊 ${this.snowAlive('red')} 人 vs 藍隊 ${this.snowAlive('blue')} 人`);
+    this.snowTimer = this.clock.setTimeout(() => {
+      this.snowTimer = null;
+      if (this.state.snowStatus !== 'countdown') return;
+      // 倒數這幾秒內有人退出就退回等待
+      if (this.snowAlive('red') === 0 || this.snowAlive('blue') === 0) {
+        this.updateSnowMatch();
+        return;
+      }
+      this.state.snowStatus = 'playing';
+      this.state.snowStartsAt = 0;
+      this.broadcastSystem('⛄ 打雪仗開始！被打中五顆雪球就出局');
+    }, SNOWFIGHT.countdownMs);
+  }
+
+  private finishSnowMatch(winner: SnowTeam): void {
+    const st = this.state;
+    this.snowTimer?.clear();
+    st.snowStatus = 'over';
+    st.snowWinner = winner;
+    st.snowStartsAt = 0;
+    this.broadcastSystem(`🏆 打雪仗結束，${SNOW_TEAM_LABEL[winner]}獲勝！`);
+    this.snowTimer = this.clock.setTimeout(() => this.resetSnowMatch(), SNOWFIGHT.overResetMs);
+  }
+
+  /**
+   * 清場：所有報名者的隊伍歸零。還站在場上的人會被 tickSnowArena 接回自由模式，
+   * 已經出局、人還在場地裡的也一樣（snowTeam 清空後就不再被擋著）。
+   */
+  private resetSnowMatch(): void {
+    const st = this.state;
+    this.snowTimer?.clear();
+    this.snowTimer = null;
+    for (const p of this.state.players.values()) {
+      if (p.snowTeam) p.snowTeam = '';
+    }
+    st.snowStatus = 'idle';
+    st.snowStartsAt = 0;
+    st.snowWinner = '';
   }
 
   private broadcastSystem(text: string): void {

@@ -1,11 +1,12 @@
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Group } from 'three';
-import { SEAT_BY_ID, getAvatar, rideSeatAt, type AnimState } from '@office/shared';
+import { SEAT_BY_ID, getAvatar, rideSeatAt, type AnimState, type SnowTeam } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
 import { FireFX } from './FireFX';
 import { NameTag } from './NameTag';
+import { TeamRing } from './TeamRing';
 import { remoteTargets } from './runtime';
 
 interface RemotePlayerProps {
@@ -31,6 +32,8 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
   const carrying = useGame((s) => Object.values(s.pets).some((p) => p.carrierId === sessionId));
   const onFire = useGame((s) => s.players[sessionId]?.onFire ?? false);
   const seatId = useGame((s) => s.players[sessionId]?.seatId ?? '');
+  const snowTeam = useGame((s) => s.players[sessionId]?.snowTeam ?? '');
+  const snowMode = useGame((s) => s.players[sessionId]?.snowMode ?? false);
 
   useFrame((_state, dt) => {
     const g = group.current;
@@ -80,6 +83,7 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
         <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
       </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
+      {snowTeam && <TeamRing team={snowTeam as SnowTeam} out={!snowMode} />}
       <NameTag sessionId={sessionId} />
     </group>
   );

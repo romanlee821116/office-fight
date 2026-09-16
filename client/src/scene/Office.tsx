@@ -1,4 +1,4 @@
-import { HALF_D, INDOOR_MAX_X, ROOM_CENTER_X, ROOM_DEPTH, ROOM_MIN_X, ROOM_WIDTH, WALL_HEIGHT } from '@office/shared';
+import { HALF_D, INDOOR_MAX_X, ROOM_DEPTH, ROOM_MIN_X, WALL_HEIGHT } from '@office/shared';
 
 /** 室內（辦公室＋健身房）的地板與牆範圍；戶外露台在 PickleCourt 繪製 */
 const INDOOR_W = INDOOR_MAX_X - ROOM_MIN_X;
@@ -24,12 +24,6 @@ export function Office() {
         position={[INDOOR_CX, 0.005, 0]}
         scale={[1, 1, ROOM_DEPTH / INDOOR_W]}
       />
-
-      {/* 地台外圍（讓房間看起來像一塊浮島） */}
-      <mesh position={[ROOM_CENTER_X, -0.32, 0]} receiveShadow>
-        <boxGeometry args={[ROOM_WIDTH + 1.2, 0.6, ROOM_DEPTH + 1.2]} />
-        <meshStandardMaterial color={palette.base} />
-      </mesh>
 
       {/* 後牆（-Z，只到室內；露台是開放的） */}
       <mesh position={[INDOOR_CX, WALL_HEIGHT / 2, -HALF_D - WALL_T / 2]} castShadow receiveShadow>
