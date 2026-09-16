@@ -148,9 +148,18 @@ export function inSnowArena(x: number, z: number, margin = 0): boolean {
 }
 
 /**
- * 雪仗模式只能在場地內移動：把座標夾回場地（留出玩家半徑）。
- * 場地四周除了北側那個通往小鎮的缺口都有碰撞盒，所以這個夾制實際上只在缺口生效——
- * 想離開就得先退出雪仗模式。前後端共用同一條，才不會一邊走得出去一邊被拉回來。
+ * 這個人是不是被關在雪仗場地裡。
+ *
+ * 只有**分隊比賽**的人走不出去（不然可以躲出場外賴皮）；自由模式想走就走，
+ * 走出場地由伺服端的 tickSnowArena 自動退出雪仗模式。
+ */
+export function snowConfined(snowMode: boolean, snowTeam: string): boolean {
+  return snowMode && snowTeam !== '';
+}
+
+/**
+ * 把座標夾回雪仗場地（留出玩家半徑）。場地四周除了北側那個通往小鎮的缺口都有碰撞盒，
+ * 所以這個夾制實際上只在缺口生效。前後端共用同一條，才不會一邊走得出去一邊被拉回來。
  */
 export function clampToSnowArena(x: number, z: number, r: number = PLAYER_RADIUS): { x: number; z: number } {
   return {

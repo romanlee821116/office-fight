@@ -209,7 +209,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         const was = local.snowMode;
         local.snowMode = on;
         if (on === was) return;
-        if (on && !player.snowTeam) useGame.getState().showToast('⛄ 進入打雪仗場地：手上只剩雪球，空白鍵丟出、雪堆旁按 E 補');
+        if (on && !player.snowTeam) useGame.getState().showToast('⛄ 進入打雪仗場地：空白鍵丟雪球、雪堆旁按 E 補');
         else if (!on && !player.snowTeam) useGame.getState().showToast('離開打雪仗場地');
       });
       $(player).listen('snowTeam', (team) => {

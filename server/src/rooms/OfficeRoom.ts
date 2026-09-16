@@ -27,6 +27,7 @@ import {
   inSnowArena,
   nearestSnowPile,
   rideBoardable,
+  snowConfined,
   rideSeatAt,
   shipAtDock,
   shipHitsPoint,
@@ -464,8 +465,9 @@ export class OfficeRoom extends Room<OfficeState> {
     }
 
     const resolved = resolveAll(x, z, this.obstaclePlayers(player.id));
-    // 雪仗模式只能在場地內移動（北側缺口沒有碰撞盒，靠這條夾回來）
-    const bounded = player.snowMode ? clampToSnowArena(resolved.x, resolved.z) : resolved;
+    // 分隊比賽中走不出場地（北側缺口沒有碰撞盒，靠這條夾回來）；自由模式想走就走
+    const confined = snowConfined(player.snowMode, player.snowTeam);
+    const bounded = confined ? clampToSnowArena(resolved.x, resolved.z) : resolved;
     player.x = bounded.x;
     player.z = bounded.z;
     player.rotY = rotY;
@@ -764,8 +766,8 @@ export class OfficeRoom extends Room<OfficeState> {
       undefined,
       this.obstaclePlayers(target.id),
     );
-    // 被雪球打退也不能被推出場地
-    const to = target.snowMode ? clampToSnowArena(knocked.x, knocked.z) : knocked;
+    // 比賽中的人被雪球打退也不能被推出場地
+    const to = snowConfined(target.snowMode, target.snowTeam) ? clampToSnowArena(knocked.x, knocked.z) : knocked;
     const impactX = impactOffset ? attacker.x + dirX * impactOffset : target.x;
     const impactZ = impactOffset ? attacker.z + dirZ * impactOffset : target.z;
     target.x = to.x;

@@ -81,7 +81,7 @@ export function SnowPanel() {
             ))}
           </div>
         ) : (
-          <span className="text-[11px] opacity-60">自由模式 · 走到旗子旁按 E 可以分隊</span>
+          <span className="text-[11px] opacity-60">自由模式 · 走到旗子旁按 E 可以分隊 · 走出場地即結束</span>
         )}
       </div>
 
@@ -119,12 +119,12 @@ export function SnowPanel() {
             onClick={sendSnowLeave}
             className="self-start rounded-full bg-white/80 px-3 py-0.5 text-[11px] cursor-pointer hover:bg-white"
           >
-            {team ? '退出雪仗（視同出局）' : '退出雪仗'}
+            {team ? '退出雪仗（視同出局）' : '原地退出雪仗'}
           </button>
         </>
       )}
 
-      {eliminated && <div className="text-sm font-semibold text-red-700">你已出局，走出場地就恢復正常</div>}
+      {eliminated && <div className="text-sm font-semibold text-red-700">你已出局</div>}
     </div>
   );
 }

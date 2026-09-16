@@ -25,6 +25,7 @@ import {
   nearestSnowPile,
   rideBoardable,
   rideSeatAt,
+  snowConfined,
   type AnimState,
   type SnowTeam,
 } from '@office/shared';
@@ -391,8 +392,8 @@ export function LocalPlayer() {
       anim = k.run ? 'run' : 'walk';
       const step = Math.min(dt, 0.05) * speed;
       const next = moveWithCollision({ x: local.x, z: local.z }, dirX * step, dirZ * step, undefined, obstaclePlayers());
-      // 雪仗模式只能在雪仗場地內移動（伺服端也會夾一次，兩邊用同一條式子）
-      const bounded = local.snowMode ? clampToSnowArena(next.x, next.z) : next;
+      // 分隊比賽中走不出場地（伺服端也會夾一次，兩邊用同一條式子）；自由模式想走就走
+      const bounded = snowConfined(local.snowMode, local.snowTeam) ? clampToSnowArena(next.x, next.z) : next;
       local.x = bounded.x;
       local.z = bounded.z;
 
