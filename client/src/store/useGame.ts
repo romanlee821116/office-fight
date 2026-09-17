@@ -181,6 +181,8 @@ interface GameState {
   seated: boolean;
   /** 本地玩家倒地的復活時間（Date.now 基準），null 代表存活 */
   deadUntil: number | null;
+  /** 被丁oe抓回辦公室後，鎖在座位上到什麼時候（Date.now 基準），null 代表沒被鎖 */
+  deskLockUntil: number | null;
   /** 收到的決鬥邀請 */
   duelInvite: DuelInviteInfo | null;
   /** 我送出、尚未回應的邀請對象名稱 */
@@ -230,6 +232,7 @@ interface GameState {
   removePet: (id: string) => void;
   setSeated: (seated: boolean) => void;
   setDeadUntil: (deadUntil: number | null) => void;
+  setDeskLockUntil: (deskLockUntil: number | null) => void;
   setDuelInvite: (invite: DuelInviteInfo | null) => void;
   setPendingDuelTo: (name: string | null) => void;
   setDuel: (duel: DuelInfo | null) => void;
@@ -272,6 +275,7 @@ const initial = {
   npc: { hp: 0, anim: 'idle', carrierId: '', pinnedAt: '' as const, onFire: false },
   seated: false,
   deadUntil: null,
+  deskLockUntil: null,
   duelInvite: null,
   pendingDuelTo: null,
   duel: null,
@@ -372,6 +376,7 @@ export const useGame = create<GameState>((set) => ({
     }),
   setSeated: (seated) => set((s) => (s.seated === seated ? s : { seated })),
   setDeadUntil: (deadUntil) => set({ deadUntil }),
+  setDeskLockUntil: (deskLockUntil) => set({ deskLockUntil }),
   setDuelInvite: (duelInvite) => set({ duelInvite }),
   setPendingDuelTo: (pendingDuelTo) => set({ pendingDuelTo }),
   setDuel: (duel) => set({ duel }),

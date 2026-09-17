@@ -376,8 +376,10 @@ export function LocalPlayer() {
 
     let anim: AnimState = 'idle';
     const staggered = now < local.staggerUntil;
+    // 被丁oe逮到，他念完之前動不了（伺服端也會擋下這段時間的移動）
+    const frozen = now < local.frozenUntil;
 
-    if (moving && !staggered) {
+    if (moving && !staggered && !frozen) {
       const len = Math.hypot(ix, iz);
       ix /= len;
       iz /= len;
@@ -405,6 +407,8 @@ export function LocalPlayer() {
       local.eatUntil = 0;
     } else if (staggered) {
       anim = 'hit';
+    } else if (frozen) {
+      anim = 'idle';
     } else if (now < local.eatUntil) {
       anim = 'eat';
     } else if (local.emote && now < local.emoteUntil) {

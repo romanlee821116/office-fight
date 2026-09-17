@@ -321,6 +321,16 @@ export interface NpcPinPayload {
   on: boolean;
 }
 
+/** S→C：被丁oe的視線逮到，他正在念你，freezeMs 內動不了 */
+export interface NpcSpottedEvent {
+  freezeMs: number;
+}
+
+/** S→C：被丁oe的視線抓到，已經傳回辦公室坐好，lockMs 內起不來 */
+export interface NpcCaughtEvent {
+  lockMs: number;
+}
+
 /** S→C：寵物被丟出去的飛行資訊（命運已由伺服端決定，前端只播飛行視覺） */
 export interface PetFlightEvent {
   petId: string;
@@ -484,6 +494,8 @@ export const Messages = {
   npcPickup: 'npcPickup',
   npcDrop: 'npcDrop',
   npcPin: 'npcPin',
+  npcSpotted: 'npcSpotted',
+  npcCaught: 'npcCaught',
   stovePlace: 'stovePlace',
   stoveTake: 'stoveTake',
   ovenPlace: 'ovenPlace',

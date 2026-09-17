@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { DANCES, EMOTES, NPC, NPC_HAZARDS, SEAT_BY_ID, SNOWFIGHT, SNOW_TEAM_LABEL, getPet, getWeapon } from '@office/shared';
 import {
   eatHeldFood,
@@ -77,6 +78,15 @@ export function InteractionBar() {
   const snow = useGame((s) => s.snow);
   const nearSnowSlot = useGame((s) => s.nearSnowSlot);
   const nearSnowPile = useGame((s) => s.nearSnowPile);
+  const deskLockUntil = useGame((s) => s.deskLockUntil);
+  // 被丁oe抓回座位時每 200ms 重畫一次，讓倒數跑起來
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (deskLockUntil === null) return;
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, [deskLockUntil]);
+  const deskLockLeft = deskLockUntil ? Math.max(0, Math.ceil((deskLockUntil - now) / 1000)) : 0;
 
   const carryingNpc = Boolean(meId) && npc.carrierId === meId;
   const weapon = getWeapon(me?.weaponId ?? '');
@@ -108,6 +118,7 @@ export function InteractionBar() {
     // 上面已經列完雪仗能做的事
   } else if (nearSnowSlot)
     actions.push({ hint: 'E', label: `加入${SNOW_TEAM_LABEL[nearSnowSlot]}打雪仗`, onClick: () => sendSnowJoin(nearSnowSlot) });
+  else if (seated && deskLockLeft > 0) notes.push(`⌨️ ${NPC.name}盯著你，${deskLockLeft} 秒後才能起身`);
   else if (seated) actions.push({ hint: 'E', label: '起身', onClick: sendStand });
   else if (carriedPet) actions.push({ hint: 'E', label: `放下 ${getPet(carriedPet.petType).name}`, onClick: sendPetDrop });
   else if (carryingNpc) actions.push({ hint: 'E', label: `放開 ${NPC.name}`, onClick: sendNpcDrop });

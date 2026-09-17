@@ -87,6 +87,8 @@ export const local = {
   /** 手上的武器（伺服端同步） */
   weaponId: '',
   attackUntil: 0,
+  /** 被丁oe逮到、他正在念你的結束時間（performance.now），這段時間動不了 */
+  frozenUntil: 0,
   /** 這次攻擊的動畫：近戰揮擊或投擲 */
   attackAnim: 'attack' as AnimState,
   lastAttackAt: 0,
@@ -288,6 +290,7 @@ export function resetRuntime(): void {
   local.dead = false;
   local.weaponId = '';
   local.attackUntil = 0;
+  local.frozenUntil = 0;
   projectileQueue.length = 0;
   local.lastAttackAt = 0;
   local.staggerUntil = 0;

@@ -2,7 +2,8 @@ import { useRef } from 'react';
 import { Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import type { Group } from 'three';
-import { NPC, NPC_HAZARDS, POND, getAvatar, type AnimState } from '@office/shared';
+import { DoubleSide } from 'three';
+import { NPC, NPC_CATCH_LINE, NPC_HAZARDS, POND, getAvatar, type AnimState } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { Avatar } from './Avatar';
 import { FireFX } from './FireFX';
@@ -59,6 +60,30 @@ function NpcTag() {
 }
 
 /**
+ * 丁oe 正前方的視線範圍：貼地的半圓（180°、半徑 NPC.visionRange）。
+ * 走進去就會被抓回辦公室，所以永遠畫出來讓人有機會繞到他背後。
+ * 剛抓到人的那幾秒轉成紅色，看得出來是誰惹的禍。
+ */
+function VisionFan() {
+  const bubble = useGame((s) => s.bubbles[NPC.id]);
+  const alert = bubble?.text === NPC_CATCH_LINE;
+  const color = alert ? '#ef4444' : '#f59e0b';
+  return (
+    <group>
+      {/* 半圓從 θ=π 到 2π：轉平之後正好蓋住群組的 +Z（也就是他面朝的方向） */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+        <circleGeometry args={[NPC.visionRange, 48, Math.PI, Math.PI]} />
+        <meshBasicMaterial color={color} transparent opacity={alert ? 0.3 : 0.12} depthWrite={false} side={DoubleSide} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
+        <ringGeometry args={[NPC.visionRange - 0.1, NPC.visionRange, 48, 1, Math.PI, Math.PI]} />
+        <meshBasicMaterial color={color} transparent opacity={alert ? 0.75 : 0.4} depthWrite={false} side={DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
  * 辦公室路人：伺服端 AI 驅動，前端只做插補與動畫。
  * 借用玩家的角色模型與 AnimState，所以動作直接交給 Avatar 播。
  * 被拖著時躺在拖的人身後（跟本地位置插補比等伺服端同步順），
@@ -71,6 +96,7 @@ export function Npc() {
   const avatar = getAvatar(NPC.avatarId);
   const onFire = useGame((s) => s.npc.onFire);
   const pinnedAt = useGame((s) => s.npc.pinnedAt);
+  const down = useGame((s) => s.npc.anim === 'dead');
   // 火與水花掛在沒被旋轉的 group 上，才不會跟著倒栽蔥的身體一起翻過去
   const carried = useGame((s) => s.npc.carrierId !== '');
   const headPos: [number, number, number] = pinnedAt
@@ -143,6 +169,7 @@ export function Npc() {
       <group ref={body}>
         <Avatar avatar={avatar} animRef={animRef} />
       </group>
+      {!down && !carried && <VisionFan />}
       {onFire && <FireFX position={headPos} scale={0.55} rate={26} />}
       {pinnedAt === 'pond' && <SplashFX position={[0, POND.headY + 0.2, 0]} scale={1.1} />}
       <NpcTag />

@@ -17,6 +17,16 @@ export const HALF_D = ROOM_DEPTH / 2;
 export const WALL_HEIGHT = 3;
 /** 健身房分隔牆所在的 X */
 export const GYM_WALL_X = 12;
+/**
+ * 辦公室本體（不含健身房與露台）。丁oe 只抓「不在這個範圍裡」的人，
+ * 人已經回到辦公區就算有乖乖上班，不會被再抓一次。
+ */
+export const OFFICE_AREA = { minX: ROOM_MIN_X, maxX: GYM_WALL_X, minZ: ROOM_MIN_Z, maxZ: ROOM_MAX_Z };
+
+export function isInOffice(x: number, z: number): boolean {
+  return x >= OFFICE_AREA.minX && x <= OFFICE_AREA.maxX && z >= OFFICE_AREA.minZ && z <= OFFICE_AREA.maxZ;
+}
+
 /** 室內（辦公室＋健身房）與戶外露台的分界 X */
 export const TERRACE_WALL_X = 23;
 /** 室內範圍（後牆、地板材質與雨雪排除用） */
@@ -246,9 +256,9 @@ export const PET = {
 export const NPC = {
   /** 場上唯一，前端拿它當名牌與對話泡泡的 key */
   id: 'npc-passerby',
-  name: 'NPC',
+  name: '丁oe',
   /** 借用玩家的角色模型 */
-  avatarId: 'chou',
+  avatarId: 'boss',
   maxHp: 1000,
   radius: 0.35,
   walkSpeed: 1.1,
@@ -269,6 +279,14 @@ export const NPC = {
   tagHeight: 2.1,
   /** 多近才算「旁邊有人可以講話」 */
   speakRange: 7,
+  /** 視線半徑：正前方 180°（半圓）之內、且中間沒有高家具擋著就算看得到 */
+  visionRange: 1.75,
+  /** 被發現後先喊話，隔這麼久才真的被送回辦公室 */
+  catchDelayMs: 3000,
+  /** 抓完人之後要隔多久才會再抓下一批 */
+  catchGapMs: 2000,
+  /** 被抓回辦公室後鎖在座位上的時間 */
+  deskLockMs: 5000,
   /** 兩句話之間的間隔 */
   speakGapMs: [3000, 7000] as [number, number],
   /** 說話時揮手的動作長度 */
@@ -308,7 +326,7 @@ export function findNpcHazard(x: number, z: number): NpcHazard | null {
 }
 
 /** 被按在爐火上時的求饒台詞 */
-export const NPC_FIRE_LINES = ['幹好燙好燙好燙', '我支持你，但這樣我會熟', '我不支持這個！', '我支持放開我'];
+export const NPC_FIRE_LINES = ['幹好燙好燙好燙', '我支持你，但這樣我會熟', '我不支持這個！操！', '我支持放開我'];
 
 /** 被壓進水裡時的求饒台詞（嘴巴在水裡，講不清楚） */
 export const NPC_WATER_LINES = ['幹咕嚕咕嚕咕嚕...', '我支持你，但我不會游泳', '我不支持這個！咕嚕', '我支持放開我…咕嚕'];
@@ -319,8 +337,11 @@ export const NPC_PIN_LINES: Record<NpcHazard, readonly string[]> = {
   pond: NPC_WATER_LINES,
 };
 
+/** 被視線照到時的喊話（抓人專用，不進隨機台詞池） */
+export const NPC_CATCH_LINE = '還想遠端啊？給我滾回辦公室😡';
+
 /** 路人的台詞，每次隨機挑一句（不會連說同一句） */
-export const NPC_LINES = ['我支持你們，但JOE說不行', '我支持你們的支持', '我支持你說話', '我支持你們，但我真沒錢', '那從公司的角度有什麼更好的做法嗎？', '要不要吃餅'];
+export const NPC_LINES = ['去跟阿翔要啊', '我支持你們的支持', '我支持你說話', '我支持你們，但我真沒錢', '那從公司的角度有什麼更好的做法嗎？', '要不要吃餅', '還想遠端啊？'];
 
 /**
  * 廚房瓦斯爐：拿著食物按 E 放上去煎，放太久會燒起來。

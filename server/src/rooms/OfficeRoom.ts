@@ -7,8 +7,10 @@ import {
   IDLE,
   NPC,
   NPC_HAZARDS,
+  NPC_CATCH_LINE,
   NPC_LINES,
   NPC_PIN_LINES,
+  OFFICE_DESK_SEATS,
   PET,
   PETS,
   PET_EAT_MS,
@@ -20,6 +22,8 @@ import {
   CAROUSEL,
   findNpcHazard,
   getPet,
+  hasLineOfSight,
+  isInOffice,
   SHIP,
   SNOWFIGHT,
   SNOW_TEAM_LABEL,
@@ -65,6 +69,8 @@ import {
   type HitEvent,
   type IdleEvent,
   type JoinOptions,
+  type NpcCaughtEvent,
+  type NpcSpottedEvent,
   type NpcHazard,
   type NpcPinPayload,
   type MovePayload,
@@ -72,6 +78,7 @@ import {
   type PickupPayload,
   type ProjectileEvent,
   type RespawnEvent,
+  type Seat,
   type SitPayload,
   type SnowJoinPayload,
   type SnowTeam,
@@ -160,6 +167,8 @@ interface NpcAi {
   speakUntil: number;
   /** 上一句的索引，避免連說同一句 */
   lastLine: number;
+  /** 下次可以用視線抓人的時間 */
+  nextCatchAt: number;
 }
 
 function randIn([min, max]: [number, number]): number {
@@ -197,7 +206,11 @@ export class OfficeRoom extends Room<OfficeState> {
   private petSeq = 0;
   private petAi = new Map<string, PetAi>();
   private npcDebug = process.env.NPC_DEBUG === '1';
-  private npcAi: NpcAi = { mode: 'idle', until: 0, tx: 0, tz: 0, staggerUntil: 0, nextSpeakAt: 0, speakUntil: 0, lastLine: -1 };
+  private npcAi: NpcAi = { mode: 'idle', until: 0, tx: 0, tz: 0, staggerUntil: 0, nextSpeakAt: 0, speakUntil: 0, lastLine: -1, nextCatchAt: 0 };
+  /** 已經被丁oe逮到、正在喊話倒數的人（時間到才真的送回辦公室） */
+  private npcPending: { ids: string[]; at: number } | null = null;
+  /** 被丁oe抓回辦公室的人：sessionId → 鎖住的座位與解鎖時間 */
+  private npcDeskLock = new Map<string, { seatId: string; until: number }>();
   /** 路人最後一次被火燒到的時間，用來讓身上的火慢慢熄掉 */
   private npcLastBurnAt = 0;
   private stoveBurnTimer: { clear(): void } | null = null;
@@ -435,6 +448,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.leaveSnow(player, 'forfeit');
     this.state.players.delete(client.sessionId);
     this.meta.delete(client.sessionId);
+    this.npcDeskLock.delete(client.sessionId);
     this.broadcastSystem(`${name} 離開了辦公室`);
     logger.info(`離開：${name}，目前 ${this.state.players.size} 人`);
   }
@@ -449,6 +463,8 @@ export class OfficeRoom extends Room<OfficeState> {
     if (!player || !meta || !payload) return;
     // 坐著或倒地時位置由伺服端鎖定
     if (player.seatId || player.hp <= 0) return;
+    // 被丁oe逮到、正在被念的那兩秒也動不了
+    if (this.npcPending?.ids.includes(client.sessionId)) return;
 
     const { x, z, rotY, anim } = payload;
     if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotY)) return;
@@ -519,6 +535,11 @@ export class OfficeRoom extends Room<OfficeState> {
     const player = this.state.players.get(client.sessionId);
     const meta = this.meta.get(client.sessionId);
     if (!player || !meta || !player.seatId) return;
+
+    // 被丁oe抓回來的人，鎖定時間內起不來
+    const lock = this.npcDeskLock.get(client.sessionId);
+    if (lock && lock.seatId === player.seatId && Date.now() < lock.until) return;
+    if (lock) this.npcDeskLock.delete(client.sessionId);
 
     meta.rideTimer?.clear();
     meta.rideTimer = null;
@@ -1172,6 +1193,7 @@ export class OfficeRoom extends Room<OfficeState> {
       nextSpeakAt: now + randIn(NPC.speakGapMs),
       speakUntil: 0,
       lastLine: this.npcAi.lastLine,
+      nextCatchAt: now + NPC.catchGapMs,
     };
   }
 
@@ -1205,6 +1227,118 @@ export class OfficeRoom extends Room<OfficeState> {
     return lines[i];
   }
 
+  /**
+   * 這個人算不算「還在遠端」：活著、站著、沒在比賽，而且人不在辦公室裡。
+   * 只有這種人會被丁oe抓，其餘的他連話都懶得說。
+   */
+  private isRemoteWorker(p: Player): boolean {
+    if (p.hp <= 0 || p.seatId || p.snowMode || p.duelWith || this.courtSideOf(p.id)) return false;
+    return !isInOffice(p.x, p.z);
+  }
+
+  /**
+   * 丁oe 正前方 180°、半徑 visionRange 的半圓內，有哪些「還在遠端」的人。
+   * 已經回到辦公室、坐著、決鬥中或比賽中的人都放過，中間隔著牆或隔間也看不到。
+   */
+  private npcSees(): Player[] {
+    const npc = this.state.npc;
+    const fx = Math.sin(npc.rotY);
+    const fz = Math.cos(npc.rotY);
+    const seen: Player[] = [];
+    for (const p of this.state.players.values()) {
+      if (!this.isRemoteWorker(p)) continue;
+      const dx = p.x - npc.x;
+      const dz = p.z - npc.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > NPC.visionRange) continue;
+      if (dist > 1e-3 && dx * fx + dz * fz < 0) continue; // 半圓：背後的人看不到
+      if (!hasLineOfSight(npc.x, npc.z, p.x, p.z)) continue;
+      seen.push(p);
+    }
+    return seen;
+  }
+
+  /** 把人傳回辦公室坐到電腦前，並鎖住座位一段時間（這段時間起不來） */
+  private sendBackToDesk(player: Player, seat: Seat, now: number): void {
+    this.dropCarriedPet(player.id);
+    this.releaseNpc(player.id);
+    const meta = this.meta.get(player.id);
+    if (meta) {
+      meta.rideTimer?.clear();
+      meta.rideTimer = null;
+      meta.lastActivityAt = now;
+      meta.lastMoveAt = now;
+    }
+    player.seatId = seat.id;
+    player.x = seat.x;
+    player.z = seat.z;
+    player.rotY = seat.rotY;
+    player.anim = seat.anim;
+    this.npcDeskLock.set(player.id, { seatId: seat.id, until: now + NPC.deskLockMs });
+    const client = this.clients.find((c) => c.sessionId === player.id);
+    client?.send(Messages.npcCaught, { lockMs: NPC.deskLockMs } satisfies NpcCaughtEvent);
+  }
+
+  /**
+   * 視線抓人分兩段：先喊那一句「還想遠端啊？都給我回辦公室」，
+   * catchDelayMs 之後人才真的被送回座位（他站在原地喊完這段時間）。
+   * 只要還在處理中就回傳 true，丁oe 這段期間不走路也不閒聊。
+   */
+  private tickNpcVision(now: number): boolean {
+    const ai = this.npcAi;
+    const npc = this.state.npc;
+
+    // 喊過話了：時間到就送人
+    if (this.npcPending) {
+      if (now < this.npcPending.at) return true;
+      const { ids } = this.npcPending;
+      this.npcPending = null;
+      this.sendPendingBackToDesk(ids, now);
+      return true;
+    }
+
+    if (now < ai.nextCatchAt) return false;
+    const seen = this.npcSees();
+    if (!seen.length) return false;
+
+    // 先轉過去喊話，人兩秒後才會被傳走
+    npc.rotY = Math.atan2(seen[0].x - npc.x, seen[0].z - npc.z);
+    npc.anim = 'wave';
+    ai.mode = 'idle';
+    ai.until = now + NPC.catchDelayMs;
+    ai.speakUntil = now + NPC.speakAnimMs;
+    ai.nextSpeakAt = now + NPC.catchDelayMs + randIn(NPC.speakGapMs);
+    ai.nextCatchAt = now + NPC.catchDelayMs + NPC.catchGapMs;
+    this.npcPending = { ids: seen.map((p) => p.id), at: now + NPC.catchDelayMs };
+    this.broadcast(Messages.npcSay, { text: NPC_CATCH_LINE });
+    // 被逮到的人在他念完之前動不了
+    for (const p of seen) {
+      const client = this.clients.find((c) => c.sessionId === p.id);
+      client?.send(Messages.npcSpotted, { freezeMs: NPC.catchDelayMs } satisfies NpcSpottedEvent);
+    }
+    return true;
+  }
+
+  /** 喊完話：把剛剛被看到的人送回辦公室坐好（跑掉也沒用，被看到就是被看到） */
+  private sendPendingBackToDesk(ids: string[], now: number): void {
+    const occupied = new Set<string>();
+    for (const p of this.state.players.values()) {
+      if (p.seatId) occupied.add(p.seatId);
+    }
+
+    const caught: string[] = [];
+    for (const id of ids) {
+      const player = this.state.players.get(id);
+      if (!player || player.hp <= 0 || player.seatId) continue; // 中途倒下、離開或自己坐下就算了
+      const seat = OFFICE_DESK_SEATS.find((seatDef) => !occupied.has(seatDef.id));
+      if (!seat) break; // 八張辦公桌都有人了，今天算你好運
+      occupied.add(seat.id);
+      this.sendBackToDesk(player, seat, now);
+      caught.push(player.name);
+    }
+    if (caught.length) this.broadcastSystem(`🪑 ${caught.join('、')} 被${NPC.name}抓回辦公室了`);
+  }
+
   /** 路人 AI：走動 → 停頓，旁邊有人時轉過去講一句。他不會攻擊任何人 */
   private tickNpc(): void {
     const npc = this.state.npc;
@@ -1212,6 +1346,7 @@ export class OfficeRoom extends Room<OfficeState> {
     const now = Date.now();
 
     if (this.npcDebug && now % 1000 < NPC.aiTickMs) logger.info(`[npc] anim=${npc.anim} mode=${ai.mode} until=${ai.until - now} speak=${ai.nextSpeakAt - now} pos=${npc.x.toFixed(1)},${npc.z.toFixed(1)}`);
+    if (npc.anim === 'dead' || npc.carrierId) this.npcPending = null; // 倒下或被拖走，剛剛喊的那句就算了
     if (npc.anim === 'dead') return; // 躺著等 placeNpc 把他扶起來
 
     // 被拖著：位置完全交給拖的人，AI 停擺
@@ -1250,6 +1385,9 @@ export class OfficeRoom extends Room<OfficeState> {
 
     // 講完話收手
     if (npc.anim === 'wave' && now >= ai.speakUntil) npc.anim = 'idle';
+
+    // 視線抓人：優先於閒聊，抓到人就停在原地講那一句
+    if (this.tickNpcVision(now)) return;
 
     // 說話：附近有人就停下來轉過去講一句；沒人就過幾秒再看
     if (now >= ai.nextSpeakAt) {

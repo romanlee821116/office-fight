@@ -97,3 +97,45 @@ export function findFreeSpawn(base: Vec2, others: Iterable<Vec2>, r: number = PL
   }
   return resolveAll(base.x, base.z, list, r);
 }
+
+/**
+ * 視線高度（公尺）。低於這個高度的家具（桌子、椅子、盆栽）擋不住視線，
+ * 只有玻璃隔間、圍籬、櫃子、冰箱這類及腰以上的東西才會把人遮住。
+ */
+const SIGHT_EYE_Y = 1.5;
+
+/** 線段 (ax,az)-(bx,bz) 有沒有穿過這個家具的 AABB（2D slab 判定） */
+function segmentHitsBox(ax: number, az: number, bx: number, bz: number, minX: number, maxX: number, minZ: number, maxZ: number): boolean {
+  let t0 = 0;
+  let t1 = 1;
+  const d = [bx - ax, bz - az];
+  const p = [ax, az];
+  const lo = [minX, minZ];
+  const hi = [maxX, maxZ];
+  for (let i = 0; i < 2; i++) {
+    if (Math.abs(d[i]) < 1e-9) {
+      if (p[i] < lo[i] || p[i] > hi[i]) return false; // 與此軸平行且在盒子外
+      continue;
+    }
+    let tn = (lo[i] - p[i]) / d[i];
+    let tf = (hi[i] - p[i]) / d[i];
+    if (tn > tf) [tn, tf] = [tf, tn];
+    t0 = Math.max(t0, tn);
+    t1 = Math.min(t1, tf);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
+/**
+ * 兩點之間看不看得到彼此：把 SIGHT_EYE_Y 高度上的實體家具當成牆，
+ * 線段穿過任何一個就算被擋住。純 2D，前後端共用（丁oe 的視線判定用）。
+ */
+export function hasLineOfSight(ax: number, az: number, bx: number, bz: number): boolean {
+  for (const f of SOLID_FURNITURE) {
+    const bottom = f.y ?? 0;
+    if (bottom > SIGHT_EYE_Y || bottom + f.h < SIGHT_EYE_Y) continue; // 眼睛高度剛好穿得過去
+    if (segmentHitsBox(ax, az, bx, bz, f.x - f.w / 2, f.x + f.w / 2, f.z - f.d / 2, f.z + f.d / 2)) return false;
+  }
+  return true;
+}

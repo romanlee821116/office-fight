@@ -298,6 +298,13 @@ SEATS.push(...coasterSeats(), ...shipSeats());
 
 export const SEAT_BY_ID = new Map(SEATS.map((s) => [s.id, s]));
 
+/**
+ * 辦公桌前的座位（furniture.ts 的 chair-0…chair-7，面向自己那張桌上的電腦）。
+ * 丁oe 把遠端工作者抓回辦公室時，就是從這一排挑一個空位塞進去。
+ */
+export const OFFICE_DESK_SEATS = SEATS.filter((s) => s.furnitureId.startsWith('chair-'));
+
+
 export function seatDistance(seat: Seat, x: number, z: number): number {
   return Math.hypot(seat.x - x, seat.z - z);
 }

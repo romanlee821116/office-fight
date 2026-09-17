@@ -14,6 +14,8 @@ import {
   type HitEvent,
   type IdleEvent,
   type JoinOptions,
+  type NpcCaughtEvent,
+  type NpcSpottedEvent,
   type NpcPinPayload,
   type NpcState,
   type PetFlightEvent,
@@ -363,6 +365,26 @@ function bindRoom(r: Room<OfficeStateShape>): void {
 
   r.onMessage<{ text: string }>(Messages.npcSay, (ev) => {
     useGame.getState().showBubble(NPC.id, ev.text);
+  });
+
+  r.onMessage<NpcSpottedEvent>(Messages.npcSpotted, (ev) => {
+    // 被他盯上：原地動彈不得，等他念完
+    local.frozenUntil = performance.now() + ev.freezeMs;
+    local.emote = null;
+    local.dance = null;
+    local.exercise = null;
+    local.eatUntil = 0;
+    useGame.getState().showToast(`😨 被${NPC.name}發現了…`);
+  });
+
+  r.onMessage<NpcCaughtEvent>(Messages.npcCaught, (ev) => {
+    const s = useGame.getState();
+    s.setDeskLockUntil(Date.now() + ev.lockMs);
+    s.showToast(`⌨️ 被${NPC.name}抓回辦公室了`);
+    setTimeout(() => {
+      const st = useGame.getState();
+      if (st.deskLockUntil !== null && st.deskLockUntil <= Date.now()) st.setDeskLockUntil(null);
+    }, ev.lockMs + 50);
   });
 
   r.onMessage<PetFlightEvent>(Messages.petFlight, (ev) => {
