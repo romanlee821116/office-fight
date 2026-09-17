@@ -1511,6 +1511,7 @@ export class OfficeRoom extends Room<OfficeState> {
   private handleNpcPickup(client: Client): void {
     const player = this.state.players.get(client.sessionId);
     if (!player || player.hp <= 0 || player.seatId || player.duelWith || this.courtSideOf(player.id)) return;
+    if (this.npcPending?.ids.includes(client.sessionId)) return; // 正在被他念，手也伸不出去
     if (this.carriedPetOf(player.id)) return; // 手上抱著寵物就騰不出手
     const npc = this.state.npc;
     if (npc.carrierId || npc.anim === 'dead') return;

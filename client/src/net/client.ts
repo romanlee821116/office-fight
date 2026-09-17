@@ -678,6 +678,7 @@ export function eatHeldFood(): void {
 }
 
 export function sendNpcPickup(): void {
+  if (performance.now() < local.frozenUntil) return; // 被丁oe念到定住時拖不動他
   room?.send(Messages.npcPickup);
 }
 

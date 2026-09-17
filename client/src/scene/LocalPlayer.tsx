@@ -438,8 +438,12 @@ export function LocalPlayer() {
       // 路人：沒被別人拖著、站得夠近才提示拖走；拖著的時候改提示腳邊的危險區
       const meId = useGame.getState().me?.sessionId;
       const draggingNpc = npcTarget.carrierId !== '' && npcTarget.carrierId === meId;
+      // 被他逮到的那兩秒動不了，自然也拖不動他
       const npcReachable =
-        !npcTarget.carrierId && npcTarget.anim !== 'dead' && Math.hypot(local.x - npcTarget.x, local.z - npcTarget.z) <= NPC.pickupRange;
+        !npcTarget.carrierId &&
+        npcTarget.anim !== 'dead' &&
+        now >= local.frozenUntil &&
+        Math.hypot(local.x - npcTarget.x, local.z - npcTarget.z) <= NPC.pickupRange;
       useGame.getState().setNearNpc(npcReachable);
       useGame.getState().setNearHazard(draggingNpc ? findNpcHazard(local.x, local.z) : null);
       // 爐子與烤箱只隔 2.6m，站在冰箱前會同時進到兩者範圍；只認比較近的那一台，提示才不會打架

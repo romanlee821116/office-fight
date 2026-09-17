@@ -261,7 +261,7 @@ export const NPC = {
   avatarId: 'boss',
   maxHp: 1000,
   radius: 0.35,
-  walkSpeed: 1.1,
+  walkSpeed: 1.5,
   aiTickMs: 100,
   /** 停下來發呆的時間範圍 */
   idleMs: [2500, 6000] as [number, number],
