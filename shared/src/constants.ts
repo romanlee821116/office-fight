@@ -73,6 +73,12 @@ export const SNOW_CENTER_Z = (SNOW_MIN_Z + SNOW_MAX_Z) / 2;
 /** 從小鎮走進雪仗場地的缺口中心與寬度（開在 cabin-a 與 cabin-b 之間的巷子正下方） */
 export const SNOW_GATE_X = -3.75;
 export const SNOW_GATE_W = 4.5;
+/**
+ * 雪仗場地與遊樂園之間的缺口（開在東側圍籬 x = SNOW_MAX_X 上），讓兩塊場地直接互通。
+ * z 選在旋轉木馬碰撞盒（到 z 30.5）與場地東南角那棵雪松（從 z 37.3 起）之間的空檔。
+ */
+export const SNOW_PARK_GATE_Z = 34;
+export const SNOW_PARK_GATE_W = 4.5;
 
 /** 世界外框：四塊場地拼起來剛好是 x -12~41、z -8~40 的長方形 */
 export const WORLD_MIN_X = ROOM_MIN_X;
@@ -135,7 +141,7 @@ export const SNOWFIGHT = {
   /** 兩隊都有人之後的開賽倒數 */
   countdownMs: 5000,
   /** 分出勝負後結算畫面停留多久才清場 */
-  overResetMs: 8000,
+  overResetMs: 5000,
 };
 
 /** 隊伍顏色：地上的隊伍圈與 HUD 共用同一組色票 */
@@ -181,7 +187,7 @@ export const PICKUPS = {
   /** 與其他道具 / 玩家的最小距離 */
   clearance: 1.5,
   /** 投射物命中判定的走廊半寬 */
-  corridorHalfWidth: 0.6,
+  corridorHalfWidth: 1,
   /** 投擲拋物線最高點 */
   throwArcHeight: 1.4,
   /** 廚房吧檯上的可頌被拿走後，多久檢查一次要不要補上 */

@@ -13,6 +13,8 @@ import {
   SNOW_MAX_Z,
   SNOW_MIN_X,
   SNOW_MIN_Z,
+  SNOW_PARK_GATE_W,
+  SNOW_PARK_GATE_Z,
   TERRACE_WALL_X,
   WALL_HEIGHT,
   XMAS_MAX_X,
@@ -311,16 +313,21 @@ for (const [i, seg] of [
     h: WALL_HEIGHT,
   });
 }
-// 4) 雪仗場地 / 遊樂園之間（x = SNOW_MAX_X，遊樂園那道西側圍籬）
-xmas.push({
-  id: 'snow-edge-east',
-  type: 'xmas',
-  x: SNOW_MAX_X,
-  z: (SNOW_MIN_Z + SNOW_MAX_Z) / 2,
-  w: FENCE_T,
-  d: SNOW_MAX_Z - SNOW_MIN_Z,
-  h: WALL_HEIGHT,
-});
+// 4) 雪仗場地 / 遊樂園之間（x = SNOW_MAX_X，遊樂園那道西側圍籬），中間留一個缺口互通
+for (const [i, seg] of [
+  [SNOW_MIN_Z, SNOW_PARK_GATE_Z - SNOW_PARK_GATE_W / 2],
+  [SNOW_PARK_GATE_Z + SNOW_PARK_GATE_W / 2, SNOW_MAX_Z],
+].entries()) {
+  xmas.push({
+    id: `snow-park-gate-${i}`,
+    type: 'xmas',
+    x: SNOW_MAX_X,
+    z: (seg[0] + seg[1]) / 2,
+    w: FENCE_T,
+    d: seg[1] - seg[0],
+    h: WALL_HEIGHT,
+  });
+}
 
 // 木屋：碰撞盒即四面外牆（屋角原木柱多突出 0.4m，不另外算）
 for (const c of CABINS) {

@@ -10,6 +10,8 @@ import {
   PARK_MAX_Z,
   PARK_MIN_X,
   PARK_MIN_Z,
+  SNOW_PARK_GATE_W,
+  SNOW_PARK_GATE_Z,
   PLAY_MIN_X,
   SHIP,
   carouselTurn,
@@ -90,7 +92,15 @@ export function Park() {
       </mesh>
 
       {/* 圍籬：東西南三面，以及北側被隱形擋塊擋住的左半段 */}
-      <Fence x={PARK_MIN_X + 0.1} z={PARK_CENTER_Z} w={0.06} d={PARK_D} />
+      {/* 西側（與雪仗場地相鄰）中間留一個缺口，兩塊場地可以直接互通 */}
+      {(
+        [
+          [PARK_MIN_Z, SNOW_PARK_GATE_Z - SNOW_PARK_GATE_W / 2],
+          [SNOW_PARK_GATE_Z + SNOW_PARK_GATE_W / 2, PARK_MAX_Z],
+        ] as const
+      ).map(([z0, z1]) => (
+        <Fence key={z0} x={PARK_MIN_X + 0.1} z={(z0 + z1) / 2} w={0.06} d={z1 - z0} />
+      ))}
       <Fence x={PARK_MAX_X - 0.1} z={PARK_CENTER_Z} w={0.06} d={PARK_D} />
       <Fence x={PARK_CENTER_X} z={PARK_MAX_Z - 0.1} w={PARK_W} d={0.06} />
       {/* 北側左半段後面是沒開放的空區，圍起來才不會看起來能走過去 */}
