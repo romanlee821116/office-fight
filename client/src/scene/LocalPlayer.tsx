@@ -484,13 +484,14 @@ export function LocalPlayer() {
   const onFire = useGame((s) => (me ? (s.players[me.sessionId]?.onFire ?? false) : false));
   const snowTeam = useGame((s) => (me ? (s.players[me.sessionId]?.snowTeam ?? '') : ''));
   const snowMode = useGame((s) => (me ? (s.players[me.sessionId]?.snowMode ?? false) : false));
+  const crowned = useGame((s) => (me ? (s.players[me.sessionId]?.npcSlayer ?? false) : false));
   if (!me) return null;
   const avatar = getAvatar(me.avatarId);
 
   return (
     <group ref={group}>
       <group ref={tilt}>
-        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} />
       </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       <NameTag sessionId={me.sessionId} isMe />

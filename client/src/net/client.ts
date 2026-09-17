@@ -173,6 +173,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         onFire: player.onFire,
         snowMode: player.snowMode,
         snowTeam: player.snowTeam,
+        npcSlayer: player.npcSlayer,
       });
     syncInfo();
 
@@ -187,6 +188,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     $(player).listen('onFire', syncInfo);
     $(player).listen('snowMode', syncInfo);
     $(player).listen('snowTeam', syncInfo);
+    $(player).listen('npcSlayer', syncInfo);
 
     if (isMe) {
       // 坐下 / 起身由伺服端決定位置與朝向，本地收到後直接套用

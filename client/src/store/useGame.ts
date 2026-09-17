@@ -45,6 +45,8 @@ export interface PlayerInfo {
   snowMode: boolean;
   /** 打雪仗隊伍（''＝自由模式或沒參加）；有隊伍但 snowMode 為 false 代表已出局 */
   snowTeam: string;
+  /** 打倒過丁oe：頭上戴皇冠、名牌掛「勞工勇士」 */
+  npcSlayer: boolean;
 }
 
 /** 打雪仗比賽狀態（伺服端同步） */

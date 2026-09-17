@@ -181,6 +181,11 @@ npx tsx scripts/e2e-smoke.mts     # 需先啟動 server；驗證加入/移動/�
 - **合批與共用貼圖**：每個 GLB 都只有一個 mesh、一個名為 colormap 的材質，而且全部指向同一張 512x512 貼圖。`HolidayKit.tsx` 依模型分組成 InstancedMesh（約 190 個零件只要三十幾個 draw call），並讓所有模型共用第一個載到的材質，否則會上傳三十幾張一模一樣的貼圖
 - 零件表在 `client/src/scene/christmasTownModel.ts`；木屋的位置、長度與開窗在 `shared/src/data/xmas.ts`，碰撞盒與「哪棵樹站在哪」在 `shared/src/data/furniture.ts`（`type: 'xmas'`），前後端讀同一份
 
+打倒過丁oe的人頭上的皇冠是外部下載的 low-poly 模型（`client/public/models/props/crown.glb`，3 個材質、無貼圖、約 6k 面），由 `client/src/scene/Crown.tsx` 以 `createPortal` 掛到角色的 `head` 節點底下，跟著頭的動畫一起動。兩個踩過的坑：
+
+- **Sketchfab / FBX 匯出的轉正與縮放寫在節點 `matrix` 裡，不是 TRS**：只看 `translation/rotation/scale` 會以為模型是 Z-up、寬 46 單位，實際上節點 matrix 已經做了 −90° 轉正與 ×0.01，最終只有 0.46 單位寬。所以不要自己補旋轉與縮放，改用 `Box3` 量實際 bounding box 反推（`head` 節點的局部座標裡頭頂在 y=8、頭寬 8，皇冠縮到 8.8 寬、底部坐在 y=7.2）
+- **glTF 沒寫 `metallicFactor` 等於全金屬**，場景沒有環境貼圖會整個黑掉，載入時一律改成 `metalness 0.3`
+
 場景主題背景使用 Kenney City Kit (Commercial)、Car Kit、Retro Urban Kit、Nature Kit（皆 CC0），只抽出用到的 GLB 放在 `client/public/models/scenes/<主題>/<kit>/`，同一資料夾內的 GLB 共用 `Textures/`（不同 kit 的 `colormap.png` 內容不同，所以依 kit 分夾）。Nature Kit 沒有貼圖、匯出時 `metallicFactor=1`，載入時一律改為非金屬並依材質名稱換色；同一 kit 內同名材質的貼圖只上傳一份
 
 場景主題另外用了兩個外部下載模型（非 Kenney）：埃及的人面獅身（Crystal Palace Park 的攝影測量掃描）與日本的庭園。這類模型不能直接丟進場景，處理流程用 Blender CLI（`/Applications/Blender.app/Contents/MacOS/Blender --background --python x.py`）跑，要點：

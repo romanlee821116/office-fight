@@ -1,5 +1,5 @@
 import { Html } from '@react-three/drei';
-import { FIGHT } from '@office/shared';
+import { FIGHT, NPC_SLAYER_TITLE } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { SpeechBubble } from './SpeechBubble';
 
@@ -26,6 +26,7 @@ export function NameTag({ sessionId, isMe = false }: NameTagProps) {
           }
         >
           {player.fightMode && <span aria-label="格鬥模式">🥊</span>}
+          {player.npcSlayer && <span className={isMe ? 'text-amber-300' : 'text-amber-600'}>👑 {NPC_SLAYER_TITLE} -</span>}
           <span>{player.name}</span>
           {status && (
             <>

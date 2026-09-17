@@ -259,7 +259,7 @@ export const NPC = {
   name: '丁oe',
   /** 借用玩家的角色模型 */
   avatarId: 'boss',
-  maxHp: 1000,
+  maxHp: 200,
   radius: 0.35,
   walkSpeed: 1.5,
   aiTickMs: 100,
@@ -336,6 +336,9 @@ export const NPC_PIN_LINES: Record<NpcHazard, readonly string[]> = {
   stove: NPC_FIRE_LINES,
   pond: NPC_WATER_LINES,
 };
+
+/** 打倒過丁oe的人，名牌上掛的稱號 */
+export const NPC_SLAYER_TITLE = '勞工勇士';
 
 /** 被視線照到時的喊話（抓人專用，不進隨機台詞池） */
 export const NPC_CATCH_LINE = '還想遠端啊？給我滾回辦公室😡';

@@ -10,6 +10,7 @@ import {
   NPC_CATCH_LINE,
   NPC_LINES,
   NPC_PIN_LINES,
+  NPC_SLAYER_TITLE,
   OFFICE_DESK_SEATS,
   PET,
   PETS,
@@ -395,6 +396,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.duelWith = '';
     player.weaponId = '';
     player.ammo = 0;
+    player.npcSlayer = false;
 
     this.state.players.set(client.sessionId, player);
     this.meta.set(client.sessionId, {
@@ -1464,7 +1466,7 @@ export class OfficeRoom extends Room<OfficeState> {
     npc.z = to.z;
     npc.rotY = Math.atan2(-dirX, -dirZ); // 面向攻擊者
 
-    const killed = this.damageNpc(weapon.damage);
+    const killed = this.damageNpc(weapon.damage, attacker.id);
     if (killed) {
       this.broadcastSystem(`🚶 ${attacker.name} 用${weapon.name}打倒了${NPC.name}…他等一下就會爬起來`);
       logger.info(`路人被打倒 by ${attacker.name}`);
@@ -1494,11 +1496,19 @@ export class OfficeRoom extends Room<OfficeState> {
     this.broadcast(Messages.hit, event);
   }
 
-  /** 扣路人的血；回傳他是否被打倒。倒下後排程 placeNpc 把他扶起來 */
-  private damageNpc(amount: number): boolean {
+  /**
+   * 扣路人的血；回傳他是否被打倒。倒下後排程 placeNpc 把他扶起來。
+   * killerId 給得出來的話，那個人從此戴上皇冠（一路留到離線）。
+   */
+  private damageNpc(amount: number, killerId = ''): boolean {
     const npc = this.state.npc;
     npc.hp = Math.max(0, npc.hp - amount);
     if (npc.hp > 0) return false;
+    const killer = killerId ? this.state.players.get(killerId) : undefined;
+    if (killer && !killer.npcSlayer) {
+      killer.npcSlayer = true;
+      this.broadcastSystem(`👑 ${killer.name} 打倒了${NPC.name}，成為${NPC_SLAYER_TITLE}`);
+    }
     npc.anim = 'dead';
     npc.onFire = false;
     if (npc.carrierId) this.releaseNpc(npc.carrierId);
@@ -1612,7 +1622,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
     const carrierName = this.state.players.get(npc.carrierId)?.name;
     const cause = npc.pinnedAt === 'pond' ? '淹死' : '烤焦';
-    if (!this.damageNpc(damage)) return;
+    if (!this.damageNpc(damage, npc.carrierId)) return;
     this.broadcastSystem(
       carrierName ? `🚶 ${carrierName} 把${NPC.name}${cause}了…他等一下就會爬起來` : `🚶 ${NPC.name}被${cause}了…他等一下就會爬起來`,
     );

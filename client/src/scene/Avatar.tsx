@@ -5,6 +5,7 @@ import { LoopOnce, LoopRepeat, Mesh, MeshBasicMaterial, MeshStandardMaterial, ty
 import { AVATARS, DANCES, type AnimState, type AvatarDef } from '@office/shared';
 import { AvatarPrimitive } from './AvatarPrimitive';
 import { CHARACTER_SCALE, ONE_SHOT_PROCEDURAL, PROCEDURAL_BPM, dancePose, isProcedural, oneShotPose, type DancePose } from './dances';
+import { Crown } from './Crown';
 import { HeldWeapon } from './HeldWeapon';
 
 export { CHARACTER_SCALE };
@@ -89,6 +90,8 @@ interface AvatarProps {
   weaponId?: string;
   /** 是否抱著寵物（雙手舉高） */
   carrying?: boolean;
+  /** 打倒過丁oe：頭上戴皇冠 */
+  crowned?: boolean;
 }
 
 /** 抱寵物時的手臂姿勢：舉過頭頂、微微外開 */
@@ -110,10 +113,11 @@ export function toLit(mat: Material): Material {
   return lit;
 }
 
-function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: AvatarProps) {
+function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crowned = false }: AvatarProps) {
   const { scene, animations } = useGLTF(characterUrl(avatar.model));
   const group = useRef<Group>(null);
   const [hand, setHand] = useState<Object3D | null>(null);
+  const [head, setHead] = useState<Object3D | null>(null);
 
   const instance = useMemo(() => {
     const clone = scene.clone(true);
@@ -131,6 +135,7 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: Av
 
   useEffect(() => {
     setHand(instance.getObjectByName('arm-right') ?? null);
+    setHead(instance.getObjectByName('head') ?? null);
     danceNodes.current = findDanceNodes(instance);
   }, [instance]);
 
@@ -257,6 +262,11 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: Av
     <group ref={group} scale={CHARACTER_SCALE} rotation={[0, FACING_FIX, 0]}>
       <primitive object={instance} />
       <HeldWeapon weaponId={weaponId} hand={hand} />
+      {crowned && (
+        <Suspense fallback={null}>
+          <Crown head={head} />
+        </Suspense>
+      )}
     </group>
   );
 }
@@ -267,10 +277,10 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false }: Av
  */
 AVATARS.forEach((a) => useGLTF.preload(characterUrl(a.model)));
 
-export function Avatar({ avatar, animRef, weaponId = '', carrying = false }: AvatarProps) {
+export function Avatar({ avatar, animRef, weaponId = '', carrying = false, crowned = false }: AvatarProps) {
   return (
     <Suspense fallback={<AvatarPrimitive color={avatar.color} accent={avatar.accent} animRef={animRef} />}>
-      <CharacterModel avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} />
+      <CharacterModel avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} />
     </Suspense>
   );
 }

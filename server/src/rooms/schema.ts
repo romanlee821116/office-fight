@@ -21,6 +21,8 @@ export class Player extends Schema {
   @type('boolean') snowMode: boolean = false;
   /** '' | 'red' | 'blue'；有隊伍但 snowMode 為 false 代表這場已經出局 */
   @type('string') snowTeam: string = '';
+  /** 打倒過丁oe：頭上戴皇冠、名牌掛「勞工勇士」，一路留到離線 */
+  @type('boolean') npcSlayer: boolean = false;
 }
 
 export class Pickup extends Schema {

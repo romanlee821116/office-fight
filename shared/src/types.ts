@@ -176,6 +176,8 @@ export interface PlayerState {
    */
   snowTeam: string;
   lastSeen: number;
+  /** 打倒過丁oe，頭上戴皇冠 */
+  npcSlayer: boolean;
 }
 
 /** 武器類型：近戰揮擊 / 整個丟出去 / 發射投射物 */
