@@ -16,3 +16,16 @@ services:
       # 進場密碼：sync false 代表不寫在程式碼裡，需在 Render 後台自行填入
       - key: JOIN_CODE
         sync: false
+      # 以下為會員登入（Google）所需；全部留空則登入功能停用，遊戲維持匿名模式
+      - key: PUBLIC_ORIGIN
+        value: https://office-fight.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: AUTH_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_ALLOWED_HD
+        sync: false

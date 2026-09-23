@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "cross-env NODE_ENV=production tsx src/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "cross-env NODE_ENV=production tsx --env-file-if-exists=.env src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -15,11 +15,13 @@
     "@office/shared": "*",
     "cross-env": "^7.0.3",
     "express": "^5.1.0",
+    "pg": "^8.23.0",
     "tsx": "^4.20.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "typescript": "^5.9.3"
   }
 }

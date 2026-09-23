@@ -105,6 +105,15 @@ gh repo create office-fight --private --source=. --push
 | --- | --- |
 | `PORT` | 監聽埠，Render 會自動注入；本機預設 2567 |
 | `JOIN_CODE` | 進場密碼。有設定時大廳才會出現密碼欄位；留空代表不需密碼 |
+| `DATABASE_URL` | Neon（PostgreSQL）連線字串，會員登入用 |
+| `AUTH_SECRET` | session cookie 的簽章密鑰，`openssl rand -base64 32` 產一組 |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Cloud 的 OAuth 用戶端憑證 |
+| `PUBLIC_ORIGIN` | 組 OAuth redirect_uri 用，須與 Google 後台登記的重新導向 URI 同源 |
+| `GOOGLE_ALLOWED_HD` | 選填，只允許這個 Google Workspace 網域登入 |
+
+會員登入（Google）需要上面五個變數（`GOOGLE_ALLOWED_HD` 除外）同時具備，缺任何一個就整組停用：大廳不顯示登入按鈕、遊戲維持匿名模式照常運作。本機開發把值填在 `server/.env`（見 `server/.env.example`）。
+
+登入只影響「暱稱與角色外觀會不會被記住」，進場管制仍然由 `JOIN_CODE` 負責。Google 後台的重新導向 URI 要登記 `<PUBLIC_ORIGIN>/api/auth/google/callback`。
 
 ### 想要不休眠的免費方案
 

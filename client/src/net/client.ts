@@ -84,14 +84,15 @@ const CLOSE_CONSENTED = 4000;
 const CLOSE_NORMAL = 1000;
 
 /** 查詢伺服端設定（dev 模式由 Vite proxy 轉發 /api 到 2567） */
-export async function fetchServerConfig(): Promise<{ requireJoinCode: boolean }> {
+export async function fetchServerConfig(): Promise<{ requireJoinCode: boolean; googleLogin: boolean }> {
+  const fallback = { requireJoinCode: false, googleLogin: false };
   try {
     const res = await fetch('/api/config', { cache: 'no-store' });
-    if (!res.ok) return { requireJoinCode: false };
-    const data = (await res.json()) as { requireJoinCode?: unknown };
-    return { requireJoinCode: data.requireJoinCode === true };
+    if (!res.ok) return fallback;
+    const data = (await res.json()) as { requireJoinCode?: unknown; googleLogin?: unknown };
+    return { requireJoinCode: data.requireJoinCode === true, googleLogin: data.googleLogin === true };
   } catch {
-    return { requireJoinCode: false };
+    return fallback;
   }
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { AVATARS, NAME_MAX, NAME_MIN } from '@office/shared';
+import { AVATARS, NAME_MAX, NAME_MIN, type AuthMe } from '@office/shared';
 import { connect, fetchServerConfig } from '../net/client';
+import { fetchMe, logout, saveMe, startGoogleLogin, takeLoginError } from '../net/auth';
 import { requestNotificationPermission } from '../lib/notify';
 import { useGame } from '../store/useGame';
 import { AvatarPreview } from './AvatarPreview';
@@ -28,6 +29,9 @@ export function Lobby() {
   const [name, setName] = useState(() => readStorage(NAME_KEY));
   const [joinCode, setJoinCode] = useState(() => readStorage(CODE_KEY));
   const [requireCode, setRequireCode] = useState(false);
+  const [googleLogin, setGoogleLogin] = useState(false);
+  const [me, setMe] = useState<AuthMe | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(() => takeLoginError());
   const connecting = phase === 'connecting';
   const avatar = AVATARS[index];
   const nameLen = [...name.trim()].length;
@@ -35,12 +39,23 @@ export function Lobby() {
   const codeValid = !requireCode || joinCode.trim().length > 0;
   const canSubmit = nameValid && codeValid && !connecting;
 
-  // 伺服端若設定了 JOIN_CODE，大廳才顯示密碼欄位
+  // 伺服端若設定了 JOIN_CODE，大廳才顯示密碼欄位；會員功能啟用時再查一次登入狀態
   useEffect(() => {
     let alive = true;
-    void fetchServerConfig().then((cfg) => {
-      if (alive) setRequireCode(cfg.requireJoinCode);
-    });
+    void (async () => {
+      const cfg = await fetchServerConfig();
+      if (!alive) return;
+      setRequireCode(cfg.requireJoinCode);
+      setGoogleLogin(cfg.googleLogin);
+      if (!cfg.googleLogin) return;
+      const profile = await fetchMe();
+      if (!alive || !profile) return;
+      // 已登入就以帳號記住的角色為準，蓋掉 localStorage 的暫存值
+      setMe(profile);
+      setName(profile.name);
+      const i = AVATARS.findIndex((a) => a.id === profile.avatarId);
+      if (i >= 0) setIndex(i);
+    })();
     return () => {
       alive = false;
     };
@@ -66,8 +81,15 @@ export function Lobby() {
     } catch {
       // 忽略儲存失敗
     }
+    // 已登入就順手把這次的暱稱與角色存回帳號，下次換裝置也認得
+    if (me) void saveMe(name.trim(), avatar.id);
     void requestNotificationPermission();
     void connect({ name: name.trim(), avatarId: avatar.id, joinCode: joinCode.trim() });
+  };
+
+  const signOut = async () => {
+    await logout();
+    setMe(null);
   };
 
   return (
@@ -78,7 +100,16 @@ export function Lobby() {
           <p className="mt-1 text-sm opacity-70">選擇角色、輸入暱稱，一起進辦公室吧</p>
         </header>
 
-        <div className="grid gap-6 md:grid-cols-[1fr_1.1fr]">
+        {loginError && (
+          <div className="mb-5 flex items-center justify-between gap-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span>{loginError}</span>
+            <button type="button" onClick={() => setLoginError(null)} className="opacity-60 transition cursor-pointer hover:opacity-100">
+              關閉
+            </button>
+          </div>
+        )}
+
+        <div className="">
           <div className="flex flex-col items-center">
             <div className="relative h-64 w-full overflow-hidden rounded-2xl bg-white/50">
               <AvatarPreview avatar={avatar} />
@@ -122,7 +153,7 @@ export function Lobby() {
             </div>
           </div>
 
-          <div className="flex flex-col justify-center gap-4">
+          <div className="flex flex-col justify-center gap-4 mt-10">
             <label className="block">
               <span className="mb-1 block text-sm font-medium">暱稱</span>
               <input
@@ -155,6 +186,35 @@ export function Lobby() {
 
             {error && <div className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
+            {googleLogin && (
+              <div className="mb-5 flex flex-wrap items-center justify-center gap-3 rounded-2xl bg-white/50 px-4 py-3 text-sm">
+                {me ? (
+                  <>
+                    <span className="opacity-70">已登入 {me.email}，角色會自動記住</span>
+                    <button
+                      type="button"
+                      onClick={() => void signOut()}
+                      className="rounded-lg border border-ink/15 px-3 py-1.5 transition cursor-pointer hover:bg-white"
+                    >
+                      登出
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="opacity-70">登入後就不用每次重選角色</span>
+                    <button
+                      type="button"
+                      onClick={startGoogleLogin}
+                      className="rounded-lg border border-ink/15 bg-white px-3 py-1.5 font-medium transition cursor-pointer hover:bg-white/80"
+                    >
+                      用 Google 登入
+                    </button>
+                    <span className="text-xs opacity-50">不登入也可以直接進場</span>
+                  </>
+                )}
+              </div>
+            )}
+            
             <button
               type="submit"
               disabled={!canSubmit}
@@ -165,18 +225,6 @@ export function Lobby() {
             >
               {connecting ? '連線中…' : '進入辦公室'}
             </button>
-
-            <ul className="mt-2 space-y-1 text-xs opacity-60">
-              <li>WASD / 方向鍵移動，Shift 加速</li>
-              <li>滑鼠左鍵拖曳旋轉視角，滾輪縮放</li>
-              <li>Enter 開啟聊天，Esc 關閉</li>
-              <li>走近椅子按 E 坐下，1 / 2 / 3 做表情，4～7 跳舞</li>
-              <li>開啟格鬥模式後按空白鍵攻擊（雙方都開啟才會命中）</li>
-              <li>在線名單的「戰鬥邀請」可邀請對方一對一決鬥</li>
-              <li>地上會隨機出現食物武器，走近按 E 撿起、Q 丟下</li>
-              <li>拿著食物按 F 可以餵寵物，或放上廚房瓦斯爐（放太久會燒起來！）</li>
-              <li>戶外露台有匹克球場：站上報名點按 E，跑到落點按空白鍵回擊，先拿 7 分獲勝</li>
-            </ul>
           </div>
         </div>
       </form>

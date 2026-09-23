@@ -121,6 +121,13 @@ export interface MovePayload {
   anim: AnimState;
 }
 
+/** 已登入會員的資料（GET / PUT /api/me） */
+export interface AuthMe {
+  email: string;
+  name: string;
+  avatarId: string;
+}
+
 /** 加入房間的選項 */
 export interface JoinOptions {
   name: string;

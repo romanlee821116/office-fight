@@ -6,6 +6,8 @@ import express from 'express';
 import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { OfficeRoom } from './rooms/OfficeRoom';
+import { authConfigHint, authEnabled, createAuthRouter } from './auth/routes';
+import { initDb } from './db/pool';
 import { logger } from './logger';
 
 const PORT = Number(process.env.PORT ?? 2567);
@@ -42,11 +44,16 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, ts: Date.now() });
 });
 
-/** 前端啟動時查詢是否需要進場密碼（密碼本身不外流） */
+/** 前端啟動時查詢是否需要進場密碼、以及會員登入是否可用（密碼本身不外流） */
 app.get('/api/config', (_req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
-  res.json({ requireJoinCode: (process.env.JOIN_CODE ?? '').trim().length > 0 });
+  res.json({
+    requireJoinCode: (process.env.JOIN_CODE ?? '').trim().length > 0,
+    googleLogin: authEnabled(),
+  });
 });
+
+app.use(createAuthRouter());
 
 // 提供打包後的前端（vite build → client/dist），同源不需處理 CORS
 // index.html 不快取（每次改版都要拿到最新的 bundle 清單）；/assets 檔名帶 hash，可長期快取
@@ -94,12 +101,15 @@ const gameServer = new Server({
 
 gameServer.define('office', OfficeRoom);
 
+await initDb();
+
 gameServer
   .listen(PORT)
   .then(() => {
     const codeOn = (process.env.JOIN_CODE ?? '').trim().length > 0;
     logger.info(`伺服器啟動：http://localhost:${PORT}（內網請以本機 IP 連入）`);
     logger.info(codeOn ? '進場密碼：已啟用' : '進場密碼：未設定（公開部署請設定 JOIN_CODE）');
+    logger.info(authConfigHint());
   })
   .catch((err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
