@@ -6,6 +6,7 @@ import {
   Messages,
   NPC,
   SEAT_BY_ID,
+  getTitle,
   type ChatMessage,
   type CourtShotEvent,
   type CourtSide,
@@ -546,7 +547,10 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   });
 
   r.onMessage<TitleEarnedEvent>(Messages.titleEarned, (ev) => {
-    useGame.getState().addTitle(ev.titleId);
+    const s = useGame.getState();
+    s.addTitle(ev.titleId);
+    const title = getTitle(ev.titleId);
+    if (title) s.showToast(`🏅 獲得稱號【${title.name}】`);
   });
 
   r.onMessage<SystemMessage>(Messages.system, (msg) => {
