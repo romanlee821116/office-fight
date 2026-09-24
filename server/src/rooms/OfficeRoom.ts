@@ -99,6 +99,7 @@ import {
   type WeaponDef,
 } from '@office/shared';
 import { verifyTicket } from '../auth/session';
+import { currentFaceUrl } from '../db/faces.repo';
 import { addCoins, buyItem, equipItems, findUserById, listOwnedItems, listPetNames, listPetTints, setItemNickname, tintItem } from '../db/users.repo';
 import { logger } from '../logger';
 import { Npc, OfficeState, Pet, Pickup, Player } from './schema';
@@ -157,6 +158,8 @@ interface AccountAuth {
   petNames: Record<string, string>;
   /** 買過的寵物各自的染色（商品 id → 染色 id） */
   petTints: Record<string, string>;
+  /** 自訂臉部照片的網址，空字串代表沒上傳 */
+  faceUrl: string;
 }
 
 interface ClientMeta {
@@ -339,6 +342,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<EquipPayload>(Messages.equip, (client, payload) => void this.handleEquip(client, payload));
     this.onPlayerMessage<RenamePetPayload>(Messages.renamePet, (client, payload) => void this.handleRenamePet(client, payload));
     this.onPlayerMessage<TintPetPayload>(Messages.tintPet, (client, payload) => void this.handleTintPet(client, payload));
+    this.onPlayerMessage(Messages.faceChanged, (client) => void this.handleFaceChanged(client));
     // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
     this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
@@ -563,6 +567,23 @@ export class OfficeRoom extends Room<OfficeState> {
     }
   }
 
+  /**
+   * 前端上傳／移除照片後送這則訊息來要求重新同步。
+   *
+   * 刻意不收前端給的網址——那等於讓任何人叫房裡所有人去載入任意 URL。
+   * 這裡只當成「去資料庫重查一次」的觸發，網址一律由伺服端自己組。
+   */
+  private async handleFaceChanged(client: Client): Promise<void> {
+    const player = this.state.players.get(client.sessionId);
+    const meta = this.meta.get(client.sessionId);
+    if (!player || !meta?.userId) return;
+    try {
+      player.faceUrl = await currentFaceUrl(meta.userId);
+    } catch (err) {
+      logger.error('重讀臉部照片失敗', err);
+    }
+  }
+
   /** 幫買過的某隻寵物染色。每次染色都要付 PET_TINT_PRICE，換色要再付一次 */
   private async handleTintPet(client: Client, payload: TintPetPayload): Promise<void> {
     const player = this.state.players.get(client.sessionId);
@@ -718,7 +739,8 @@ export class OfficeRoom extends Room<OfficeState> {
       const ownedItems = await listOwnedItems(user.id);
       const petNames = await listPetNames(user.id);
       const petTints = await listPetTints(user.id);
-      return { userId: user.id, coins: user.coins, hatId: user.hatId, outfitId: user.outfitId, weaponId: user.weaponId, petId: user.petId, ownedItems, petNames, petTints };
+      const face = await currentFaceUrl(user.id);
+      return { userId: user.id, coins: user.coins, hatId: user.hatId, outfitId: user.outfitId, weaponId: user.weaponId, petId: user.petId, ownedItems, petNames, petTints, faceUrl: face };
     } catch (err) {
       // 資料庫暫時不通時照樣讓人進場，只是這次當訪客
       logger.error('讀取會員資料失敗，本次以訪客進場', err);
@@ -763,6 +785,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.outfitId = account?.outfitId ?? '';
     player.gearId = account?.weaponId ?? '';
     player.petGearId = account?.petId ?? '';
+    player.faceUrl = account?.faceUrl ?? '';
     this.giveGearWeapon(player);
 
     this.state.players.set(client.sessionId, player);

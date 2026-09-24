@@ -192,6 +192,8 @@ export interface AuthMe {
   petNames: Record<string, string>;
   /** 每隻買過的寵物各自的染色（商品 id → 染色 id） */
   petTints: Record<string, string>;
+  /** 自訂臉部照片的網址，空字串代表沒上傳 */
+  faceUrl: string;
 }
 
 /** 加入房間的選項 */
@@ -268,6 +270,8 @@ export interface PlayerState {
   gearId: string;
   /** 跟班寵物的商品 id，空字串代表沒帶 */
   petGearId: string;
+  /** 自訂臉部照片的網址，空字串代表用角色原本的臉 */
+  faceUrl: string;
 }
 
 /** 武器類型：近戰揮擊 / 整個丟出去 / 發射投射物 */
@@ -615,5 +619,6 @@ export const Messages = {
   equip: 'equip',
   renamePet: 'renamePet',
   tintPet: 'tintPet',
+  faceChanged: 'faceChanged',
   shop: 'shop',
 } as const;

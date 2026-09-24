@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   NAME_MAX,
   PET_TINTS,
@@ -10,7 +10,8 @@ import {
   type ShopItem,
   type ShopItemKind,
 } from '@office/shared';
-import { sendBuy, sendEquip, sendRenamePet, sendTintPet } from '../net/client';
+import { sendBuy, sendEquip, sendFaceChanged, sendRenamePet, sendTintPet } from '../net/client';
+import { prepareFace, removeFace, uploadFace } from '../net/auth';
 import { useGame } from '../store/useGame';
 import { AvatarPreview } from './AvatarPreview';
 
@@ -206,6 +207,123 @@ function PetTintPicker({
   );
 }
 
+/**
+ * 臉部照片：上傳後合成到角色頭部正面那一格。
+ * 照片在瀏覽器就縮到 128×128 再送出，所以永遠只有幾 KB。
+ */
+function FaceUploader({ faceUrl }: { faceUrl: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // 選好但還沒送出的照片（已經縮好的 data URL），按確認才上傳
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    const image = await prepareFace(file);
+    setBusy(false);
+    if (!image) {
+      setError('讀不到這張圖，換一張試試');
+      return;
+    }
+    setDraft(image);
+  };
+
+  const confirm = async () => {
+    if (!draft) return;
+    setBusy(true);
+    const url = await uploadFace(draft);
+    setBusy(false);
+    if (!url) {
+      setError('上傳失敗，換一張試試');
+      return;
+    }
+    setDraft(null);
+    // 伺服端會自己重查網址再同步給房裡的人
+    sendFaceChanged();
+  };
+
+  const clear = async () => {
+    setBusy(true);
+    await removeFace();
+    setBusy(false);
+    setDraft(null);
+    sendFaceChanged();
+  };
+
+  const shown = draft ?? faceUrl;
+  return (
+    <div className="mt-3 border-t border-ink/10 pt-3">
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <span className="text-xs font-semibold opacity-70">我的臉</span>
+        <span className="text-[10px] opacity-40">貼到角色的正面</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className={'h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-white/60 ' + (draft ? 'ring-2 ring-amber-400' : '')}>
+          {shown ? (
+            <img src={draft ?? `${faceUrl}/photo.png`} alt="臉" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-[10px] opacity-40">無</div>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <input
+            ref={input}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              void pick(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => input.current?.click()}
+            disabled={busy}
+            className={'rounded-lg bg-white/80 px-2 py-1 text-xs transition cursor-pointer hover:bg-white ' + (busy ? 'opacity-40' : '')}
+          >
+            {busy ? '處理中…' : faceUrl || draft ? '換一張照片' : '選擇照片'}
+          </button>
+          {draft ? (
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => void confirm()}
+                disabled={busy}
+                className="flex-1 rounded-lg bg-amber-500 px-2 py-1 text-xs font-medium text-white transition cursor-pointer hover:bg-amber-600"
+              >
+                確認使用
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraft(null)}
+                className="rounded-lg bg-white/60 px-2 py-1 text-[11px] opacity-70 transition cursor-pointer hover:bg-white hover:opacity-100"
+              >
+                取消
+              </button>
+            </div>
+          ) : (
+            faceUrl && (
+              <button
+                type="button"
+                onClick={() => void clear()}
+                disabled={busy}
+                className="rounded-lg bg-white/60 px-2 py-1 text-[11px] opacity-70 transition cursor-pointer hover:bg-white hover:opacity-100"
+              >
+                改回原本的臉
+              </button>
+            )
+          )}
+        </div>
+      </div>
+      {error && <div className="mt-1 rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-700">{error}</div>}
+    </div>
+  );
+}
+
 export function ShopPanel() {
   const open = useGame((s) => s.shopOpen);
   const setOpen = useGame((s) => s.setShopOpen);
@@ -251,7 +369,9 @@ export function ShopPanel() {
   };
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-30 flex items-center justify-center bg-ink/30 p-4" onClick={close}>
+    /* z-60：場景裡的名牌與對話泡泡是 drei 的 <Html>，自帶 z-index（NameTag 50、
+       Npc 45、Pets 40），比它們低的話會被蓋在下面 */
+    <div className="pointer-events-auto fixed inset-0 z-[60] flex items-center justify-center bg-ink/30 p-4" onClick={close}>
       {/* 高度固定：各分頁商品數量不同（服裝 22 件、武器 5 件），不固定的話切換會忽高忽低 */}
       <div className="glass flex h-[min(85vh,640px)] w-full max-w-3xl flex-col rounded-3xl p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
@@ -291,6 +411,7 @@ export function ShopPanel() {
                 weaponId={getShopItem(tryWeapon)?.asset ?? ''}
                 petId={tryPet}
                 petTint={tintDraft ?? (petTints[tryPet] ?? '')}
+                faceUrl={me.faceUrl}
               />
             </div>
             <div className="mt-2 min-h-[2.5rem] text-center text-xs">
@@ -343,6 +464,7 @@ export function ShopPanel() {
               </>
             )}
             {notice && <div className="mt-2 rounded-lg bg-red-50 px-2 py-1 text-center text-[11px] text-red-700">{notice}</div>}
+            <FaceUploader faceUrl={me.faceUrl} />
           </div>
 
           {/* 商品清單：先自己的衣櫃，再商店 */}

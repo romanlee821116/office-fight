@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import express, { type Request, type Response, type Router } from 'express';
-import type { AuthMe } from '@office/shared';
+import { FACE, type AuthMe } from '@office/shared';
+import { composeFace, isKnownModel, isKnownTexture, modelPath } from '../lib/faceComposite';
+import { currentFaceUrl, deleteFace, faceUrl, loadFace, parseDataUrl, saveFace } from '../db/faces.repo';
 import { pool } from '../db/pool';
 import { findUserById, listOwnedItems, listPetNames, listPetTints, updateProfile, upsertGoogleUser, type UserRow } from '../db/users.repo';
 import { logger } from '../logger';
@@ -107,6 +109,7 @@ async function toAuthMe(user: UserRow): Promise<AuthMe> {
     ownedItems: await listOwnedItems(user.id),
     petNames: await listPetNames(user.id),
     petTints: await listPetTints(user.id),
+    faceUrl: await currentFaceUrl(user.id),
   };
 }
 
@@ -209,6 +212,101 @@ export function createAuthRouter(): Router {
       return;
     }
     res.json(await toAuthMe(user));
+  });
+
+  /**
+   * 上傳臉部照片。前端已經把圖縮到 FACE.uploadSize 再壓成 JPEG，
+   * 所以 body 正常只有幾 KB；limit 抓寬一點但仍遠低於任何濫用的量。
+   */
+  router.put('/api/me/face', express.json({ limit: '256kb' }), async (req: Request, res: Response) => {
+    const userId = authEnabled() ? currentUserId(req) : null;
+    if (!userId) {
+      res.status(401).json({ error: '未登入' });
+      return;
+    }
+    const parsed = parseDataUrl((req.body as { image?: unknown } | undefined)?.image);
+    if (!parsed) {
+      res.status(400).json({ error: `照片格式不支援，或超過 ${Math.round(FACE.maxBytes / 1024)}KB` });
+      return;
+    }
+    const updatedAt = await saveFace(userId, parsed.image, parsed.mime);
+    if (!updatedAt) {
+      res.status(500).json({ error: '儲存失敗' });
+      return;
+    }
+    res.json({ faceUrl: faceUrl(userId, updatedAt.getTime()) });
+  });
+
+  router.delete('/api/me/face', async (req: Request, res: Response) => {
+    const userId = authEnabled() ? currentUserId(req) : null;
+    if (!userId) {
+      res.status(401).json({ error: '未登入' });
+      return;
+    }
+    await deleteFace(userId);
+    res.json({ faceUrl: '' });
+  });
+
+  /*
+   * 帶著自訂臉的角色模型。
+   *
+   * 關鍵在於 glb 是用相對路徑引用貼圖的（Textures/texture-x.png），所以只要把
+   * 模型掛在 /api/face/<id>/<ver>/model/ 底下，GLTFLoader 自己就會去抓
+   * 同一層的 Textures/…，而那個路由回的是合成過的貼圖。
+   *
+   * 前端因此完全不必碰 texture：useGLTF 換個網址，其餘走它平常的路徑。
+   * 版本號放在路徑裡而不是 query，換照片會變成新網址，才能安心長快取。
+   */
+  router.get('/api/face/:userId/:version/model/Textures/:file', async (req: Request, res: Response) => {
+    const userId = String(req.params.userId ?? '');
+    const file = String(req.params.file ?? '');
+    if (!/^[0-9a-f-]{36}$/i.test(userId) || !isKnownTexture(file)) {
+      res.status(404).end();
+      return;
+    }
+    const face = await loadFace(userId);
+    if (!face) {
+      res.status(404).end();
+      return;
+    }
+    const png = composeFace(userId, file, face.updatedAt.getTime(), face.image);
+    if (!png) {
+      res.status(500).end();
+      return;
+    }
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(png);
+  });
+
+  /** 模型檔本身原封不動，只是換個位置讓上面那條貼圖路由能被相對路徑找到 */
+  router.get('/api/face/:userId/:version/model/:file', (req: Request, res: Response) => {
+    const file = String(req.params.file ?? '');
+    const full = isKnownModel(file) ? modelPath(file) : null;
+    if (!full) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Content-Type', 'model/gltf-binary');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.sendFile(full);
+  });
+
+  /** 原始照片，給商店的縮圖用 */
+  router.get('/api/face/:userId/:version/photo.png', async (req: Request, res: Response) => {
+    const userId = String(req.params.userId ?? '');
+    if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+      res.status(404).end();
+      return;
+    }
+    const face = await loadFace(userId);
+    if (!face) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Content-Type', face.mime);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(face.image);
   });
 
   return router;

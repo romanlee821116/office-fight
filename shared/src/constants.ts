@@ -724,6 +724,27 @@ export const COINS = {
   signupBonus: 3000,
 };
 
+/**
+ * 上傳照片當臉。
+ *
+ * 角色的頭是立方體，臉只佔貼圖 atlas 上的一格——座標由 character-a.glb 的頂點
+ * 反查而來（法線朝 +Z 那面的四個角落）。照片在瀏覽器就先縮到這個尺寸再上傳，
+ * 所以伺服器收到的永遠是幾 KB，資料庫也不會被塞爆。
+ */
+export const FACE = {
+  /** 臉在 1024×1024 atlas 上的位置 */
+  x: 134,
+  y: 132,
+  size: 117,
+  /** 上傳前縮到這個邊長（2 的冪，略大於 size 保留一點銳利度） */
+  uploadSize: 128,
+  /**
+   * 伺服端接受的最大位元組數，超過直接拒絕。
+   * 128×128 的 PNG 大約 20～40KB，這個上限已經很寬鬆。
+   */
+  maxBytes: 128 * 1024,
+};
+
 /** 文字限制 */
 export const NAME_MIN = 2;
 export const NAME_MAX = 12;

@@ -59,6 +59,8 @@ export interface PlayerInfo {
   gearId: string;
   /** 跟班寵物的商品 id */
   petGearId: string;
+  /** 自訂臉部照片的網址 */
+  faceUrl: string;
 }
 
 /** 打雪仗比賽狀態（伺服端同步） */

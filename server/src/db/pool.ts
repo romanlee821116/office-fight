@@ -52,7 +52,19 @@ export async function initDb(): Promise<boolean> {
     // 寵物可以取名；其他類型的商品用不到，留空
     await pool.query("ALTER TABLE user_items ADD COLUMN IF NOT EXISTS nickname text NOT NULL DEFAULT ''");
     await pool.query("ALTER TABLE user_items ADD COLUMN IF NOT EXISTS tint text NOT NULL DEFAULT ''");
-    logger.info('資料庫：已連線，users / user_items 表就緒');
+    /*
+     * 臉部照片單獨一張表：users 每次登入、查金幣都會讀，
+     * 不該讓它拖著一個 bytea 欄位一起被撈出來。
+     */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_faces (
+        user_id    uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        image      bytea NOT NULL,
+        mime       text NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    logger.info('資料庫：已連線，users / user_items / user_faces 表就緒');
     return true;
   } catch (err) {
     logger.error('資料庫連線失敗，會員功能停用', err);

@@ -99,6 +99,8 @@ interface AvatarProps {
   hatId?: string;
   /** 買來的服裝商品 id，空字串為角色原本的貼圖 */
   outfitId?: string;
+  /** 自訂臉部照片的網址，空字串為角色原本的臉 */
+  faceUrl?: string;
 }
 
 /** 抱寵物時的手臂姿勢：舉過頭頂、微微外開 */
@@ -120,8 +122,17 @@ export function toLit(mat: Material): Material {
   return lit;
 }
 
-function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crowned = false, hatId = '', outfitId = '' }: AvatarProps) {
-  const { scene, animations } = useGLTF(characterUrl(avatar.model));
+function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crowned = false, hatId = '', outfitId = '', faceUrl = '' }: AvatarProps) {
+  /*
+   * 有上傳自訂臉時，改從 /api/face/<id>/<ver>/model/ 載入同一個模型檔。
+   * glb 是用相對路徑引用貼圖的，所以 GLTFLoader 會自己去抓那一層的
+   * Textures/…，而伺服端在那裡回的是合成過照片的貼圖。
+   *
+   * 這樣前端完全不必碰 texture——先前試過在執行期抽換 head 的材質，
+   * 手動對齊 flipY / colorSpace / filter 的環節太多，出錯就是一顆黑頭。
+   */
+  const modelUrl = faceUrl ? `${faceUrl}/model/${avatar.model}.glb` : characterUrl(avatar.model);
+  const { scene, animations } = useGLTF(modelUrl);
   const group = useRef<Group>(null);
   const [hand, setHand] = useState<Object3D | null>(null);
   const [head, setHead] = useState<Object3D | null>(null);
@@ -289,7 +300,7 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crow
 AVATARS.forEach((a) => useGLTF.preload(characterUrl(a.model)));
 preloadOutfits();
 
-export function Avatar({ avatar, animRef, weaponId = '', carrying = false, crowned = false, hatId = '', outfitId = '' }: AvatarProps) {
+export function Avatar({ avatar, animRef, weaponId = '', carrying = false, crowned = false, hatId = '', outfitId = '', faceUrl = '' }: AvatarProps) {
   return (
     <Suspense fallback={<AvatarPrimitive color={avatar.color} accent={avatar.accent} animRef={animRef} />}>
       <CharacterModel
@@ -300,6 +311,7 @@ export function Avatar({ avatar, animRef, weaponId = '', carrying = false, crown
         crowned={crowned}
         hatId={hatId}
         outfitId={outfitId}
+        faceUrl={faceUrl}
       />
     </Suspense>
   );

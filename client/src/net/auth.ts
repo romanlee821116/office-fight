@@ -1,4 +1,4 @@
-import type { AuthMe } from '@office/shared';
+import { FACE, type AuthMe } from '@office/shared';
 
 /** 導向 Google 同意畫面；回來時伺服端會帶著 session cookie 導回首頁 */
 export function startGoogleLogin(): void {
@@ -41,6 +41,60 @@ export async function fetchRoomTicket(): Promise<string | null> {
     return typeof data.ticket === 'string' ? data.ticket : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 把照片裁成正方形、縮到 FACE.uploadSize 再壓成 JPEG。
+ *
+ * 壓縮在瀏覽器做，伺服器收到的永遠只有幾 KB——不必處理大檔上傳，
+ * 資料庫也不會被塞爆。裁切取中央的正方形（多數人像照臉都在中間）。
+ */
+export async function prepareFace(file: File): Promise<string | null> {
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return null;
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = FACE.uploadSize;
+  canvas.height = FACE.uploadSize;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(
+    bitmap,
+    (bitmap.width - side) / 2,
+    (bitmap.height - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    FACE.uploadSize,
+    FACE.uploadSize,
+  );
+  bitmap.close();
+  // 一定要 PNG：伺服端要把它合成到角色貼圖上，而 Node 沒有內建的 JPEG 解碼
+  return canvas.toDataURL('image/png');
+}
+
+/** 上傳已經縮好的臉部照片；回傳新的網址，失敗回 null */
+export async function uploadFace(image: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/me/face', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image }),
+    });
+    if (!res.ok) return null;
+    return ((await res.json()) as { faceUrl?: string }).faceUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function removeFace(): Promise<boolean> {
+  try {
+    return (await fetch('/api/me/face', { method: 'DELETE' })).ok;
+  } catch {
+    return false;
   }
 }
 

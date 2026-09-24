@@ -192,6 +192,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         outfitId: player.outfitId,
         gearId: player.gearId,
         petGearId: player.petGearId,
+        faceUrl: player.faceUrl,
       });
     syncInfo();
 
@@ -212,6 +213,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     $(player).listen('outfitId', syncInfo);
     $(player).listen('gearId', syncInfo);
     $(player).listen('petGearId', syncInfo);
+    $(player).listen('faceUrl', syncInfo);
 
     if (isMe) {
       // 坐下 / 起身由伺服端決定位置與朝向，本地收到後直接套用
@@ -653,6 +655,11 @@ export function sendBuy(itemId: string): void {
 
 export function sendRenamePet(itemId: string, name: string): void {
   room?.send(Messages.renamePet, { itemId, name } satisfies RenamePetPayload);
+}
+
+/** 上傳／移除照片後叫伺服端重查一次，同步給房裡的人 */
+export function sendFaceChanged(): void {
+  room?.send(Messages.faceChanged);
 }
 
 export function sendTintPet(itemId: string, tint: string): void {

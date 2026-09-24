@@ -488,13 +488,14 @@ export function LocalPlayer() {
   const crowned = useGame((s) => (me ? (s.players[me.sessionId]?.npcSlayer ?? false) : false));
   const hatId = useGame((s) => (me ? (s.players[me.sessionId]?.hatId ?? '') : ''));
   const outfitId = useGame((s) => (me ? (s.players[me.sessionId]?.outfitId ?? '') : ''));
+  const faceUrl = useGame((s) => (me ? (s.players[me.sessionId]?.faceUrl ?? '') : ''));
   if (!me) return null;
   const avatar = getAvatar(me.avatarId);
 
   return (
     <group ref={group}>
       <group ref={tilt}>
-        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} hatId={hatId} outfitId={outfitId} />
+        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} hatId={hatId} outfitId={outfitId} faceUrl={faceUrl} />
       </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       {/* 拿著遠程武器且進入戰鬥狀態時，把命中判定畫在地上 */}

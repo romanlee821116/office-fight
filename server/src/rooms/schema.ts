@@ -35,6 +35,8 @@ export class Player extends Schema {
   @type('string') gearId: string = '';
   /** 跟班寵物的商品 id，空字串代表沒帶 */
   @type('string') petGearId: string = '';
+  /** 自訂臉部照片的網址，空字串代表用角色原本的臉 */
+  @type('string') faceUrl: string = '';
 }
 
 export class Pickup extends Schema {
