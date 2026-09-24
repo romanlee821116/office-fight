@@ -4,6 +4,7 @@ import { FACE, type AuthMe } from '@office/shared';
 import { composeFace, isKnownModel, isKnownTexture, modelPath } from '../lib/faceComposite';
 import { currentFaceUrl, deleteFace, faceUrl, loadFace, parseDataUrl, saveFace } from '../db/faces.repo';
 import { pool } from '../db/pool';
+import { listTitles } from '../db/titles.repo';
 import { findUserById, listOwnedItems, listPetNames, listPetTints, updateProfile, upsertGoogleUser, type UserRow } from '../db/users.repo';
 import { logger } from '../logger';
 import {
@@ -110,6 +111,8 @@ async function toAuthMe(user: UserRow): Promise<AuthMe> {
     petNames: await listPetNames(user.id),
     petTints: await listPetTints(user.id),
     faceUrl: await currentFaceUrl(user.id),
+    titles: await listTitles(user.id),
+    titleId: user.titleId,
   };
 }
 

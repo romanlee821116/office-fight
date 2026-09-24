@@ -1,5 +1,5 @@
 import { Html } from '@react-three/drei';
-import { FIGHT, NPC_SLAYER_TITLE } from '@office/shared';
+import { FIGHT, getTitle } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { SpeechBubble } from './SpeechBubble';
 
@@ -14,6 +14,8 @@ export function NameTag({ sessionId, isMe = false }: NameTagProps) {
   if (!player) return null;
 
   const status = player.status;
+  // 皇冠是「打倒過丁oe」的即時標記；稱號則是玩家自己挑要戴哪一個
+  const title = getTitle(player.titleId);
 
   return (
     <Html position={[0, 2.1, 0]} center distanceFactor={14} zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
@@ -26,7 +28,8 @@ export function NameTag({ sessionId, isMe = false }: NameTagProps) {
           }
         >
           {player.fightMode && <span aria-label="格鬥模式">🥊</span>}
-          {player.npcSlayer && <span className={isMe ? 'text-amber-300' : 'text-amber-600'}>👑 {NPC_SLAYER_TITLE} -</span>}
+          {player.npcSlayer && <span className={isMe ? 'text-amber-300' : 'text-amber-600'}>👑</span>}
+          {title && <span className={isMe ? 'text-amber-300' : 'text-amber-600'}>{title.name} -</span>}
           <span>{player.name}</span>
           {status && (
             <>

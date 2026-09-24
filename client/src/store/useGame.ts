@@ -61,6 +61,8 @@ export interface PlayerInfo {
   petGearId: string;
   /** 自訂臉部照片的網址 */
   faceUrl: string;
+  /** 配戴中的稱號 id */
+  titleId: string;
 }
 
 /** 打雪仗比賽狀態（伺服端同步） */
@@ -227,6 +229,8 @@ interface GameState {
   petNames: Record<string, string>;
   /** 買過的寵物各自的染色（商品 id → 染色 id） */
   petTints: Record<string, string>;
+  /** 已解鎖的稱號 id */
+  titles: string[];
 
   setPhase: (phase: Phase) => void;
   setError: (error: string | null) => void;
@@ -277,6 +281,8 @@ interface GameState {
   setShopNotice: (text: string | null) => void;
   setPetNames: (names: Record<string, string>) => void;
   setPetTints: (tints: Record<string, string>) => void;
+  setTitles: (titles: string[]) => void;
+  addTitle: (titleId: string) => void;
   reset: () => void;
 }
 
@@ -305,6 +311,7 @@ const initial = {
   shopNotice: null as string | null,
   petNames: {} as Record<string, string>,
   petTints: {} as Record<string, string>,
+  titles: [] as string[],
   weatherEnabled: readWeatherEnabled(),
   sceneTheme: readSceneTheme(),
   sceneThemeLoading: false,
@@ -338,6 +345,8 @@ export const useGame = create<GameState>((set) => ({
   setShopNotice: (shopNotice) => set({ shopNotice }),
   setPetNames: (petNames) => set({ petNames }),
   setPetTints: (petTints) => set({ petTints }),
+  setTitles: (titles) => set({ titles }),
+  addTitle: (titleId) => set((s) => (s.titles.includes(titleId) ? s : { titles: [...s.titles, titleId] })),
   setMe: (me) => set({ me }),
 
   upsertPlayer: (player) =>

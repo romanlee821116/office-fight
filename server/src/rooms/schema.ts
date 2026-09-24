@@ -37,6 +37,8 @@ export class Player extends Schema {
   @type('string') petGearId: string = '';
   /** 自訂臉部照片的網址，空字串代表用角色原本的臉 */
   @type('string') faceUrl: string = '';
+  /** 配戴中的稱號 id，空字串代表沒戴 */
+  @type('string') titleId: string = '';
 }
 
 export class Pickup extends Schema {

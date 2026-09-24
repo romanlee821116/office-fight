@@ -64,7 +64,33 @@ export async function initDb(): Promise<boolean> {
         updated_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    logger.info('資料庫：已連線，users / user_items / user_faces 表就緒');
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS title_id text NOT NULL DEFAULT ''");
+    // 已解鎖的稱號
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_titles (
+        user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title_id  text NOT NULL,
+        earned_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, title_id)
+      )
+    `);
+    /*
+     * 累計統計。刻意和稱號解耦：之後要加新稱號多半只是換個門檻，
+     * 不必再動一次資料表結構。
+     */
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_stats (
+        user_id      uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        work_seconds integer NOT NULL DEFAULT 0,
+        deaths       integer NOT NULL DEFAULT 0,
+        caught       integer NOT NULL DEFAULT 0,
+        feeds        integer NOT NULL DEFAULT 0
+      )
+    `);
+    for (const column of ['gym_seconds', 'dance_seconds', 'bakes']) {
+      await pool.query(`ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS ${column} integer NOT NULL DEFAULT 0`);
+    }
+    logger.info('資料庫：已連線，users / user_items / user_faces / user_titles / user_stats 表就緒');
     return true;
   } catch (err) {
     logger.error('資料庫連線失敗，會員功能停用', err);

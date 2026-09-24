@@ -10,3 +10,4 @@ export * from './data/pets';
 export * from './data/coaster';
 export * from './data/xmas';
 export * from './data/shop';
+export * from './data/titles';

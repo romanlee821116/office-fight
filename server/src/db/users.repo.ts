@@ -11,6 +11,7 @@ export interface UserRow {
   outfitId: string;
   weaponId: string;
   petId: string;
+  titleId: string;
 }
 
 interface RawRow {
@@ -23,9 +24,10 @@ interface RawRow {
   outfit_id: string;
   weapon_id: string;
   pet_id: string;
+  title_id: string;
 }
 
-const USER_COLUMNS = 'id, email, name, avatar_id, coins, hat_id, outfit_id, weapon_id, pet_id';
+const USER_COLUMNS = 'id, email, name, avatar_id, coins, hat_id, outfit_id, weapon_id, pet_id, title_id';
 
 function toUser(row: RawRow): UserRow {
   return {
@@ -38,6 +40,7 @@ function toUser(row: RawRow): UserRow {
     outfitId: row.outfit_id,
     weaponId: row.weapon_id,
     petId: row.pet_id,
+    titleId: row.title_id,
   };
 }
 

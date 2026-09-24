@@ -30,6 +30,8 @@ import {
   type EquipPayload,
   type RenamePetPayload,
   type TintPetPayload,
+  type TitleEarnedEvent,
+  type WearTitlePayload,
   type ShopEvent,
   type SitPayload,
   type SnowJoinPayload,
@@ -155,6 +157,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     useGame.getState().setOwnedItems(profile?.ownedItems ?? []);
     useGame.getState().setPetNames(profile?.petNames ?? {});
     useGame.getState().setPetTints(profile?.petTints ?? {});
+    useGame.getState().setTitles(profile?.titles ?? []);
   });
 
   $(r.state).players.onAdd((player, sessionId) => {
@@ -193,6 +196,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         gearId: player.gearId,
         petGearId: player.petGearId,
         faceUrl: player.faceUrl,
+        titleId: player.titleId,
       });
     syncInfo();
 
@@ -214,6 +218,7 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     $(player).listen('gearId', syncInfo);
     $(player).listen('petGearId', syncInfo);
     $(player).listen('faceUrl', syncInfo);
+    $(player).listen('titleId', syncInfo);
 
     if (isMe) {
       // 坐下 / 起身由伺服端決定位置與朝向，本地收到後直接套用
@@ -540,6 +545,10 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     }
   });
 
+  r.onMessage<TitleEarnedEvent>(Messages.titleEarned, (ev) => {
+    useGame.getState().addTitle(ev.titleId);
+  });
+
   r.onMessage<SystemMessage>(Messages.system, (msg) => {
     useGame.getState().pushMessage({ id: `sys-${msg.ts}-${Math.random()}`, kind: 'system', text: msg.text, ts: msg.ts });
   });
@@ -660,6 +669,10 @@ export function sendRenamePet(itemId: string, name: string): void {
 /** 上傳／移除照片後叫伺服端重查一次，同步給房裡的人 */
 export function sendFaceChanged(): void {
   room?.send(Messages.faceChanged);
+}
+
+export function sendWearTitle(titleId: string): void {
+  room?.send(Messages.wearTitle, { titleId } satisfies WearTitlePayload);
 }
 
 export function sendTintPet(itemId: string, tint: string): void {

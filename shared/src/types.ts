@@ -164,6 +164,16 @@ export interface TintPetPayload {
   tint: string;
 }
 
+/** 配戴稱號（C→S）；空字串代表取下 */
+export interface WearTitlePayload {
+  titleId: string;
+}
+
+/** 解鎖了新稱號（S→C） */
+export interface TitleEarnedEvent {
+  titleId: string;
+}
+
 /** 購買 / 染色的結果（S→C） */
 export interface ShopEvent {
   /** 這則回覆對應哪個動作 */
@@ -194,6 +204,10 @@ export interface AuthMe {
   petTints: Record<string, string>;
   /** 自訂臉部照片的網址，空字串代表沒上傳 */
   faceUrl: string;
+  /** 已解鎖的稱號 id */
+  titles: string[];
+  /** 配戴中的稱號 id */
+  titleId: string;
 }
 
 /** 加入房間的選項 */
@@ -272,6 +286,8 @@ export interface PlayerState {
   petGearId: string;
   /** 自訂臉部照片的網址，空字串代表用角色原本的臉 */
   faceUrl: string;
+  /** 配戴中的稱號 id，空字串代表沒戴 */
+  titleId: string;
 }
 
 /** 武器類型：近戰揮擊 / 整個丟出去 / 發射投射物 */
@@ -620,5 +636,7 @@ export const Messages = {
   renamePet: 'renamePet',
   tintPet: 'tintPet',
   faceChanged: 'faceChanged',
+  wearTitle: 'wearTitle',
+  titleEarned: 'titleEarned',
   shop: 'shop',
 } as const;

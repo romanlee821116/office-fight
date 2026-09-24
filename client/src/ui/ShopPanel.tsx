@@ -4,29 +4,35 @@ import {
   PET_TINTS,
   PET_TINT_PRICE,
   SHOP_ITEMS,
+  TITLES,
   getAvatar,
   getShopItem,
   getWeapon,
   type ShopItem,
   type ShopItemKind,
 } from '@office/shared';
-import { sendBuy, sendEquip, sendFaceChanged, sendRenamePet, sendTintPet } from '../net/client';
+import { sendBuy, sendEquip, sendFaceChanged, sendRenamePet, sendTintPet, sendWearTitle } from '../net/client';
 import { prepareFace, removeFace, uploadFace } from '../net/auth';
 import { useGame } from '../store/useGame';
 import { AvatarPreview } from './AvatarPreview';
 
-const TABS: { kind: ShopItemKind; label: string }[] = [
+/** 稱號不是商品，但共用同一排分頁 */
+type Tab = ShopItemKind | 'title';
+
+const TABS: { kind: Tab; label: string }[] = [
   { kind: 'hat', label: '頭飾' },
   { kind: 'outfit', label: '服裝' },
   { kind: 'weapon', label: '武器' },
   { kind: 'pet', label: '寵物' },
+  { kind: 'title', label: '稱號' },
 ];
 
-const EMPTY_LABEL: Record<ShopItemKind, string> = {
+const EMPTY_LABEL: Record<Tab, string> = {
   hat: '不戴頭飾',
   outfit: '原本的外觀',
   weapon: '不帶武器',
   pet: '不帶寵物',
+  title: '不戴稱號',
 };
 
 /** 武器的數值摘要，讓人買之前看得到差別 */
@@ -324,6 +330,50 @@ function FaceUploader({ faceUrl }: { faceUrl: string }) {
   );
 }
 
+/**
+ * 稱號：不能用錢買，只能靠特定情境解鎖。已解鎖的可以點選配戴，
+ * 再點一次取下；沒解鎖的只顯示取得方式。一次只戴一個。
+ */
+function TitleList({ owned, worn }: { owned: string[]; worn: string }) {
+  const unlocked = TITLES.filter((t) => owned.includes(t.id));
+  const locked = TITLES.filter((t) => !owned.includes(t.id));
+
+  return (
+    <div className="scrollbar-thin min-w-0 flex-1 overflow-y-auto pr-1">
+      <Section title="已獲得" count={unlocked.length}>
+        <ItemCard title="不戴稱號" note="預設" selected={worn === ''} onClick={() => sendWearTitle('')} />
+        {unlocked.map((t) => (
+          <ItemCard
+            key={t.id}
+            title={t.name}
+            note={worn === t.id ? '配戴中' : '可配戴'}
+            owned={worn === t.id}
+            selected={worn === t.id}
+            onClick={() => sendWearTitle(worn === t.id ? '' : t.id)}
+          />
+        ))}
+      </Section>
+
+      {locked.length > 0 && (
+        <div className="mb-3">
+          <div className="mb-1.5 flex items-baseline gap-2 px-1">
+            <span className="text-xs font-semibold opacity-70">還沒解鎖</span>
+            <span className="text-[10px] opacity-40">{locked.length}</span>
+          </div>
+          <ul className="grid grid-cols-1 gap-2">
+            {locked.map((t) => (
+              <li key={t.id} className="rounded-xl bg-white/40 px-3 py-2">
+                <div className="text-sm font-medium opacity-40">🔒 {t.name}</div>
+                <div className="text-[11px] opacity-40">{t.how}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ShopPanel() {
   const open = useGame((s) => s.shopOpen);
   const setOpen = useGame((s) => s.setShopOpen);
@@ -331,10 +381,11 @@ export function ShopPanel() {
   const owned = useGame((s) => s.ownedItems);
   const petNames = useGame((s) => s.petNames);
   const petTints = useGame((s) => s.petTints);
+  const titles = useGame((s) => s.titles);
   const meId = useGame((s) => s.me?.sessionId);
   const me = useGame((s) => (meId ? s.players[meId] : undefined));
 
-  const [tab, setTab] = useState<ShopItemKind>('hat');
+  const [tab, setTab] = useState<Tab>('hat');
   const [tryHat, setTryHat] = useTryOn('hat', me?.hatId ?? '');
   const [tryOutfit, setTryOutfit] = useTryOn('outfit', me?.outfitId ?? '');
   const [tryWeapon, setTryWeapon] = useTryOn('weapon', me?.gearId ?? '');
@@ -424,7 +475,7 @@ export function ShopPanel() {
                 <div className="opacity-50">{EMPTY_LABEL[tab]}</div>
               )}
             </div>
-            <div className="mt-2 flex flex-col gap-1.5">
+            <div className={'mt-2 flex flex-col gap-1.5 ' + (tab === 'title' ? 'hidden' : '')}>
               {selected && !ownsSelected && (
                 <button
                   type="button"
@@ -467,8 +518,11 @@ export function ShopPanel() {
             <FaceUploader faceUrl={me.faceUrl} />
           </div>
 
+          {/* 稱號不是商品，右側換成另一份清單 */}
+          {tab === 'title' && <TitleList owned={titles} worn={me.titleId} />}
+
           {/* 商品清單：先自己的衣櫃，再商店 */}
-          <div className="scrollbar-thin min-w-0 flex-1 overflow-y-auto pr-1">
+          <div className={'scrollbar-thin min-w-0 flex-1 overflow-y-auto pr-1 ' + (tab === 'title' ? 'hidden' : '')}>
             <Section title="我的衣櫃" count={mine.length}>
               <ItemCard
                 title={EMPTY_LABEL[tab]}

@@ -6,6 +6,9 @@ import {
   DUEL,
   PET_TINTS,
   PET_TINT_PRICE,
+  TITLES,
+  TITLE_THRESHOLDS,
+  getTitle,
   getShopItem,
   isGearWeapon,
   isItemOfKind,
@@ -84,6 +87,8 @@ import {
   type EquipPayload,
   type RenamePetPayload,
   type TintPetPayload,
+  type TitleEarnedEvent,
+  type WearTitlePayload,
   type MovePayload,
   type PetFlightEvent,
   type ShopEvent,
@@ -100,6 +105,7 @@ import {
 } from '@office/shared';
 import { verifyTicket } from '../auth/session';
 import { currentFaceUrl } from '../db/faces.repo';
+import { EMPTY_STATS, bumpStat, grantTitle, listTitles, loadStats, wearTitle, type UserStats } from '../db/titles.repo';
 import { addCoins, buyItem, equipItems, findUserById, listOwnedItems, listPetNames, listPetTints, setItemNickname, tintItem } from '../db/users.repo';
 import { logger } from '../logger';
 import { Npc, OfficeState, Pet, Pickup, Player } from './schema';
@@ -119,6 +125,9 @@ const FIST: WeaponDef = {
 };
 
 const ANIMS = new Set<string>(ANIM_STATES);
+
+/** 算進「健身」的動作：跑步機、臥推、深蹲、啞鈴彎舉 */
+const GYM_ANIMS = new Set<string>(['run', 'benchpress', 'benchpress-incline', 'squat', 'curl']);
 
 /** 隨身武器每隔這段時間自動回填一發 */
 const GEAR_AMMO_REFILL_MS = 2500;
@@ -160,6 +169,12 @@ interface AccountAuth {
   petTints: Record<string, string>;
   /** 自訂臉部照片的網址，空字串代表沒上傳 */
   faceUrl: string;
+  /** 已解鎖的稱號 */
+  titles: string[];
+  /** 配戴中的稱號 */
+  titleId: string;
+  /** 累計統計 */
+  stats: UserStats;
 }
 
 interface ClientMeta {
@@ -196,6 +211,14 @@ interface ClientMeta {
   petNames: Map<string, string>;
   /** 買過的寵物各自的染色（商品 id → 染色 id） */
   petTints: Map<string, string>;
+  /** 已解鎖的稱號 */
+  titles: Set<string>;
+  /** 累計統計（進場時載入，解鎖判定都看這份） */
+  stats: UserStats;
+  /** 這條命打倒了幾個人，復活歸零 */
+  killStreak: number;
+  /** 還沒寫回資料庫的工作秒數（和金幣一樣定期落盤） */
+  workUnsaved: number;
 }
 
 /** 讓前端不要自動重連的關閉碼（等同使用者主動離開） */
@@ -343,6 +366,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<RenamePetPayload>(Messages.renamePet, (client, payload) => void this.handleRenamePet(client, payload));
     this.onPlayerMessage<TintPetPayload>(Messages.tintPet, (client, payload) => void this.handleTintPet(client, payload));
     this.onPlayerMessage(Messages.faceChanged, (client) => void this.handleFaceChanged(client));
+    this.onPlayerMessage<WearTitlePayload>(Messages.wearTitle, (client, payload) => void this.handleWearTitle(client, payload));
     // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
     this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
@@ -367,6 +391,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
     this.clock.setInterval(() => this.tickSnowArena(), SNOW_ARENA_TICK_MS);
     this.clock.setInterval(() => this.tickSalary(), COINS.tickMs);
+    this.clock.setInterval(() => this.tickActivity(), COINS.tickMs);
     this.clock.setInterval(() => void this.flushCoins(), COINS.flushMs);
     this.clock.setInterval(() => this.tickGearAmmo(), GEAR_AMMO_REFILL_MS);
 
@@ -444,6 +469,24 @@ export class OfficeRoom extends Room<OfficeState> {
       if (!OFFICE_DESK_SEAT_IDS.has(player.seatId)) continue;
       player.coins += COINS.perTick;
       meta.coinsUnsaved += COINS.perTick;
+      meta.workUnsaved += COINS.tickMs / 1000;
+    }
+  }
+
+  /**
+   * 健身與跳舞的時數：跟薪水同一個節拍，看玩家當下在做什麼動作。
+   * 健身要坐在器材上（anim 由座位決定），跳舞則是站著自己跳。
+   */
+  private tickActivity(): void {
+    const seconds = COINS.tickMs / 1000;
+    for (const player of this.state.players.values()) {
+      const meta = this.meta.get(player.id);
+      if (!meta?.userId || player.hp <= 0) continue;
+      if (GYM_ANIMS.has(player.anim)) {
+        void this.bump(player.id, 'gymSeconds', seconds, (n) => (n >= TITLE_THRESHOLDS.gym ? 'gym-30m' : null));
+      } else if (player.anim.startsWith('dance-')) {
+        void this.bump(player.id, 'danceSeconds', seconds, (n) => (n >= TITLE_THRESHOLDS.dance ? 'dance-30m' : null));
+      }
     }
   }
 
@@ -457,6 +500,15 @@ export class OfficeRoom extends Room<OfficeState> {
    * 寫入失敗就把增量還回去，下一輪再試。
    */
   private async saveCoins(meta: ClientMeta, sessionId?: string): Promise<void> {
+    if (sessionId && meta.userId && meta.workUnsaved > 0) {
+      const seconds = meta.workUnsaved;
+      meta.workUnsaved = 0;
+      await this.bump(sessionId, 'workSeconds', seconds, (n) =>
+        n >= TITLE_THRESHOLDS.work24h ? 'work-24h' : n >= TITLE_THRESHOLDS.work3h ? 'work-3h' : null,
+      );
+      // 跨過 3 小時那一刻可能同時也該拿 24 小時，補檢查一次
+      if (meta.stats.workSeconds >= TITLE_THRESHOLDS.work3h) await this.earnTitle(sessionId, 'work-3h');
+    }
     if (!meta.userId || meta.coinsUnsaved <= 0) return;
     const delta = meta.coinsUnsaved;
     meta.coinsUnsaved = 0;
@@ -504,6 +556,7 @@ export class OfficeRoom extends Room<OfficeState> {
       return;
     }
     meta.ownedItems.add(item.id);
+    if (item.kind === 'pet') this.checkPetCollection(client.sessionId);
     player.coins = result.coins;
     this.sendShop(client, 'buy', true, item.id);
     logger.info(`購買：${player.name} 買了 ${item.name}（${item.price}）`);
@@ -610,6 +663,107 @@ export class OfficeRoom extends Room<OfficeState> {
       if (pet) pet.tint = tint;
     }
     this.sendShop(client, 'tint', true, itemId, { tint });
+  }
+
+  /**
+   * 解鎖稱號：寫進資料庫、全場廣播、通知本人。
+   * 已經有的不會重複觸發（grantTitle 用 ON CONFLICT DO NOTHING 判斷）。
+   */
+  private async earnTitle(sessionId: string, titleId: string): Promise<void> {
+    const meta = this.meta.get(sessionId);
+    const player = this.state.players.get(sessionId);
+    if (!meta?.userId || !player || meta.titles.has(titleId)) return;
+    const def = getTitle(titleId);
+    if (!def) return;
+
+    meta.titles.add(titleId);
+    try {
+      if (!(await grantTitle(meta.userId, titleId))) return; // 別的分頁已經拿過了
+    } catch (err) {
+      logger.error('稱號寫回資料庫失敗', err);
+      return;
+    }
+    this.broadcastSystem(`🏅 ${player.name} 獲得稱號【${def.name}】`);
+    this.clients.find((c) => c.sessionId === sessionId)?.send(Messages.titleEarned, { titleId } satisfies TitleEarnedEvent);
+  }
+
+  /** 累加統計並檢查有沒有跨過門檻 */
+  private async bump(sessionId: string, field: keyof UserStats, amount: number, check: (value: number) => string | null): Promise<void> {
+    const meta = this.meta.get(sessionId);
+    if (!meta?.userId || amount <= 0) return;
+    meta.stats[field] += amount;
+    const titleId = check(meta.stats[field]);
+    try {
+      await bumpStat(meta.userId, field, amount);
+    } catch (err) {
+      logger.error('統計寫回資料庫失敗', err);
+    }
+    if (titleId) await this.earnTitle(sessionId, titleId);
+  }
+
+  /** 倒地：累計次數，並看是不是被海盜船撞死的 */
+  private onPlayerDown(sessionId: string, byShip: boolean): void {
+    const meta = this.meta.get(sessionId);
+    if (!meta?.userId) return;
+    meta.killStreak = 0;
+    void this.bump(sessionId, 'deaths', 1, (n) => (n >= TITLE_THRESHOLDS.deaths ? 'deaths-50' : null));
+    if (byShip) void this.earnTitle(sessionId, 'ship-death');
+  }
+
+  /** 打倒別人：空手、食物、以及同一條命內的連續擊倒 */
+  private onPlayerKill(sessionId: string, weapon: WeaponDef): void {
+    const meta = this.meta.get(sessionId);
+    if (!meta?.userId) return;
+    if (!weapon.id) void this.earnTitle(sessionId, 'barehand');
+    if (weapon.edible) void this.earnTitle(sessionId, 'food-kill');
+    meta.killStreak += 1;
+    if (meta.killStreak >= TITLE_THRESHOLDS.tripleKill) void this.earnTitle(sessionId, 'triple-kill');
+  }
+
+  /**
+   * 進場時把「看累計值就能判定」的稱號全部補一次。
+   * 統計是這套系統上線前就在累積的（金幣、被抓、餵食都有紀錄），
+   * 不補的話老玩家得再湊一次才拿得到。
+   */
+  private checkStatTitles(sessionId: string): void {
+    const meta = this.meta.get(sessionId);
+    if (!meta?.userId) return;
+    const { workSeconds, deaths, caught, feeds } = meta.stats;
+    if (workSeconds >= TITLE_THRESHOLDS.work3h) void this.earnTitle(sessionId, 'work-3h');
+    if (workSeconds >= TITLE_THRESHOLDS.work24h) void this.earnTitle(sessionId, 'work-24h');
+    if (deaths >= TITLE_THRESHOLDS.deaths) void this.earnTitle(sessionId, 'deaths-50');
+    if (caught >= TITLE_THRESHOLDS.caught) void this.earnTitle(sessionId, 'caught-10');
+    if (feeds >= TITLE_THRESHOLDS.feeds) void this.earnTitle(sessionId, 'feed-20');
+    if (meta.stats.gymSeconds >= TITLE_THRESHOLDS.gym) void this.earnTitle(sessionId, 'gym-30m');
+    if (meta.stats.danceSeconds >= TITLE_THRESHOLDS.dance) void this.earnTitle(sessionId, 'dance-30m');
+    if (meta.stats.bakes >= TITLE_THRESHOLDS.bakes) void this.earnTitle(sessionId, 'bake-10');
+    this.checkPetCollection(sessionId);
+  }
+
+  /** 擁有的寵物種類數達標就給德魯伊 */
+  private checkPetCollection(sessionId: string): void {
+    const meta = this.meta.get(sessionId);
+    if (!meta?.userId) return;
+    let pets = 0;
+    for (const id of meta.ownedItems) if (getShopItem(id)?.kind === 'pet') pets += 1;
+    if (pets >= TITLE_THRESHOLDS.pets) void this.earnTitle(sessionId, 'druid');
+  }
+
+  /** 配戴稱號；只能戴解鎖過的，空字串是取下 */
+  private async handleWearTitle(client: Client, payload: WearTitlePayload): Promise<void> {
+    const player = this.state.players.get(client.sessionId);
+    const meta = this.meta.get(client.sessionId);
+    if (!player || !meta?.userId) return;
+    const titleId = typeof payload?.titleId === 'string' ? payload.titleId : '';
+    if (titleId && !meta.titles.has(titleId)) return;
+    if (titleId && !TITLES.some((t) => t.id === titleId)) return;
+
+    player.titleId = titleId;
+    try {
+      await wearTitle(meta.userId, titleId);
+    } catch (err) {
+      logger.error('配戴稱號寫回資料庫失敗', err);
+    }
   }
 
   private companionOf(ownerId: string): Pet | null {
@@ -740,7 +894,9 @@ export class OfficeRoom extends Room<OfficeState> {
       const petNames = await listPetNames(user.id);
       const petTints = await listPetTints(user.id);
       const face = await currentFaceUrl(user.id);
-      return { userId: user.id, coins: user.coins, hatId: user.hatId, outfitId: user.outfitId, weaponId: user.weaponId, petId: user.petId, ownedItems, petNames, petTints, faceUrl: face };
+      const titles = await listTitles(user.id);
+      const stats = await loadStats(user.id);
+      return { userId: user.id, coins: user.coins, hatId: user.hatId, outfitId: user.outfitId, weaponId: user.weaponId, petId: user.petId, ownedItems, petNames, petTints, faceUrl: face, titles, titleId: user.titleId, stats };
     } catch (err) {
       // 資料庫暫時不通時照樣讓人進場，只是這次當訪客
       logger.error('讀取會員資料失敗，本次以訪客進場', err);
@@ -786,6 +942,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.gearId = account?.weaponId ?? '';
     player.petGearId = account?.petId ?? '';
     player.faceUrl = account?.faceUrl ?? '';
+    player.titleId = account?.titleId ?? '';
     this.giveGearWeapon(player);
 
     this.state.players.set(client.sessionId, player);
@@ -807,9 +964,14 @@ export class OfficeRoom extends Room<OfficeState> {
       ownedItems: new Set(account?.ownedItems ?? []),
       petNames: new Map(Object.entries(account?.petNames ?? {})),
       petTints: new Map(Object.entries(account?.petTints ?? {})),
+      titles: new Set(account?.titles ?? []),
+      stats: account?.stats ?? { ...EMPTY_STATS },
+      killStreak: 0,
+      workUnsaved: 0,
     });
 
     this.syncCompanionPet(player);
+    this.checkStatTitles(client.sessionId);
     this.broadcastSystem(`${name} 進入了辦公室`);
     logger.info(`加入：${name} (${client.sessionId})，目前 ${this.state.players.size} 人`);
   }
@@ -961,6 +1123,7 @@ export class OfficeRoom extends Room<OfficeState> {
       meta.lastMoveAt = now;
       if (!safe) {
         const ride = seat.ride.kind === 'ship' ? '海盜船' : '雲霄飛車';
+        if (seat.ride.kind === 'coaster') void this.earnTitle(client.sessionId, 'coaster-death');
         this.knockOut(player, `🎢 ${player.name} 在${ride}上跳車，摔死了`, '跳車摔死');
       }
       return;
@@ -977,9 +1140,11 @@ export class OfficeRoom extends Room<OfficeState> {
   }
 
   /** 直接擊倒某人：走跟爐火一樣的倒地與重生流程 */
-  private knockOut(player: Player, message: string, reason: string): void {
+  /** 非戰鬥的倒地（跳車、被海盜船撞）；byShip 只影響稱號判定 */
+  private knockOut(player: Player, message: string, reason: string, byShip = false): void {
     player.hp = 0;
     player.anim = 'dead';
+    this.onPlayerDown(player.id, byShip);
     this.dropWeapon(player);
     this.dropCarriedPet(player.id);
     this.releaseNpc(player.id);
@@ -1211,6 +1376,8 @@ export class OfficeRoom extends Room<OfficeState> {
       this.eliminateSnow(target, attacker);
     } else if (killed) {
       target.anim = 'dead';
+      this.onPlayerKill(attacker.id, weapon);
+      this.onPlayerDown(target.id, false);
       this.dropWeapon(target);
       this.dropCarriedPet(target.id);
       this.releaseNpc(target.id);
@@ -1685,6 +1852,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.rotY = seat.rotY;
     player.anim = seat.anim;
     this.npcDeskLock.set(player.id, { seatId: seat.id, until: now + NPC.deskLockMs });
+    void this.bump(player.id, 'caught', 1, (n) => (n >= TITLE_THRESHOLDS.caught ? 'caught-10' : null));
     const client = this.clients.find((c) => c.sessionId === player.id);
     client?.send(Messages.npcCaught, { lockMs: NPC.deskLockMs } satisfies NpcCaughtEvent);
   }
@@ -1915,6 +2083,7 @@ export class OfficeRoom extends Room<OfficeState> {
     const killer = killerId ? this.state.players.get(killerId) : undefined;
     if (killer && !killer.npcSlayer) {
       killer.npcSlayer = true;
+      void this.earnTitle(killer.id, 'npc-slayer');
       this.broadcastSystem(`👑 ${killer.name} 打倒了${NPC.name}，成為${NPC_SLAYER_TITLE}`);
     }
     npc.anim = 'dead';
@@ -2093,7 +2262,7 @@ export class OfficeRoom extends Room<OfficeState> {
       player.z = to.z;
       this.broadcast(Messages.hit, event);
       // 只有血歸零才倒地，撞不死就只是飛出去
-      if (killed) this.knockOut(player, `🏴\u200d☠️ ${player.name} 被海盜船撞飛了`, '被海盜船撞飛');
+      if (killed) this.knockOut(player, `🏴\u200d☠️ ${player.name} 被海盜船撞飛了`, '被海盜船撞飛', true);
     }
   }
 
@@ -2201,6 +2370,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
     player.weaponId = '';
     player.ammo = 0;
+    void this.bump(client.sessionId, 'feeds', 1, (n) => (n >= TITLE_THRESHOLDS.feeds ? 'feed-20' : null));
     pet.hp = PET.maxHp;
     pet.anim = 'eat';
     pet.rotY = Math.atan2(player.x - pet.x, player.z - pet.z); // 面向餵食的人
@@ -2245,12 +2415,15 @@ export class OfficeRoom extends Room<OfficeState> {
     this.state.ovenStage = 'baking';
     this.broadcastSystem(`🥐 ${player.name} 把${weapon.name}放進烤箱`);
 
+    // 算在放進去的人頭上，而且要真的烤好才算（中途拿出來不計）
+    const bakerId = client.sessionId;
     this.ovenTimer = this.clock.setTimeout(() => {
       if (this.state.ovenStage !== 'baking' || this.state.ovenFoodId !== weapon.id) return;
       const baked = WEAPON_BY_ID.get(weapon.bakesTo ?? '');
       this.state.ovenFoodId = baked?.id ?? weapon.id;
       this.state.ovenStage = 'done';
       this.broadcastSystem(`🔔 烤箱叮了一聲，${baked?.name ?? weapon.name}出爐了！`);
+      void this.bump(bakerId, 'bakes', 1, (n) => (n >= TITLE_THRESHOLDS.bakes ? 'bake-10' : null));
     }, OVEN.bakeMs);
   }
 
@@ -2708,6 +2881,7 @@ export class OfficeRoom extends Room<OfficeState> {
     const winner = this.courtPlayerOf(winnerSide);
     if (announce && winner) {
       this.broadcastSystem(`🏆 匹克球比賽結束，${winner.name} 獲勝（${this.state.courtScoreA}:${this.state.courtScoreB}）！`);
+      void this.earnTitle(winner.id, 'court-win');
     }
     for (const side of ['A', 'B'] as const) {
       const p = this.courtPlayerOf(side);
@@ -3008,6 +3182,10 @@ export class OfficeRoom extends Room<OfficeState> {
     st.snowWinner = winner;
     st.snowStartsAt = 0;
     this.broadcastSystem(`🏆 打雪仗結束，${SNOW_TEAM_LABEL[winner]}獲勝！`);
+    // 勝隊全員都算（包含中途被打出局的，隊伍還在身上）
+    for (const player of this.state.players.values()) {
+      if (player.snowTeam === winner) void this.earnTitle(player.id, 'snow-win');
+    }
     this.snowTimer = this.clock.setTimeout(() => this.resetSnowMatch(), SNOWFIGHT.overResetMs);
   }
 
