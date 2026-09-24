@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import express, { type Request, type Response, type Router } from 'express';
 import type { AuthMe } from '@office/shared';
 import { pool } from '../db/pool';
-import { findUserById, updateProfile, upsertGoogleUser } from '../db/users.repo';
+import { findUserById, listOwnedItems, listPetNames, listPetTints, updateProfile, upsertGoogleUser, type UserRow } from '../db/users.repo';
 import { logger } from '../logger';
 import {
   SESSION_COOKIE,
@@ -15,6 +15,7 @@ import {
   readCookie,
   setCookie,
   sign,
+  signTicket,
   verify,
 } from './session';
 
@@ -93,6 +94,22 @@ function fail(res: Response, reason: string): void {
   res.redirect(`/?login_error=${encodeURIComponent(reason)}`);
 }
 
+async function toAuthMe(user: UserRow): Promise<AuthMe> {
+  return {
+    email: user.email,
+    name: user.name,
+    avatarId: user.avatarId,
+    coins: user.coins,
+    hatId: user.hatId,
+    outfitId: user.outfitId,
+    weaponId: user.weaponId,
+    petId: user.petId,
+    ownedItems: await listOwnedItems(user.id),
+    petNames: await listPetNames(user.id),
+    petTints: await listPetTints(user.id),
+  };
+}
+
 export function createAuthRouter(): Router {
   const router = express.Router();
 
@@ -159,6 +176,16 @@ export function createAuthRouter(): Router {
     res.json({ ok: true });
   });
 
+  /** 換一張短期進場票，讓 Colyseus 房間認得出這是哪個帳號（訪客拿不到） */
+  router.get('/api/auth/ticket', (req: Request, res: Response) => {
+    const userId = authEnabled() ? currentUserId(req) : null;
+    if (!userId) {
+      res.status(401).json({ error: '未登入' });
+      return;
+    }
+    res.json({ ticket: signTicket(userId) });
+  });
+
   router.get('/api/me', async (req: Request, res: Response) => {
     const userId = authEnabled() ? currentUserId(req) : null;
     const user = userId ? await findUserById(userId) : null;
@@ -166,7 +193,7 @@ export function createAuthRouter(): Router {
       res.status(401).json({ error: '未登入' });
       return;
     }
-    res.json({ email: user.email, name: user.name, avatarId: user.avatarId } satisfies AuthMe);
+    res.json(await toAuthMe(user));
   });
 
   router.put('/api/me', express.json({ limit: '1kb' }), async (req: Request, res: Response) => {
@@ -181,7 +208,7 @@ export function createAuthRouter(): Router {
       res.status(400).json({ error: '暱稱或角色不合法' });
       return;
     }
-    res.json({ email: user.email, name: user.name, avatarId: user.avatarId } satisfies AuthMe);
+    res.json(await toAuthMe(user));
   });
 
   return router;

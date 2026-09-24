@@ -34,6 +34,8 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
   const seatId = useGame((s) => s.players[sessionId]?.seatId ?? '');
   const snowTeam = useGame((s) => s.players[sessionId]?.snowTeam ?? '');
   const crowned = useGame((s) => s.players[sessionId]?.npcSlayer ?? false);
+  const hatId = useGame((s) => s.players[sessionId]?.hatId ?? '');
+  const outfitId = useGame((s) => s.players[sessionId]?.outfitId ?? '');
   const snowMode = useGame((s) => s.players[sessionId]?.snowMode ?? false);
 
   useFrame((_state, dt) => {
@@ -81,7 +83,7 @@ export function RemotePlayer({ sessionId, avatarId }: RemotePlayerProps) {
   return (
     <group ref={group}>
       <group ref={tilt}>
-        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} />
+        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} hatId={hatId} outfitId={outfitId} />
       </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
       {snowTeam && <TeamRing team={snowTeam as SnowTeam} out={!snowMode} />}

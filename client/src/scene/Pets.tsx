@@ -1,10 +1,11 @@
-import { Suspense, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Html, useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { LoopRepeat, Mesh, type Group } from 'three';
+import { LoopRepeat, Mesh, type Group, type Material, type MeshStandardMaterial } from 'three';
 import { PET, PETS, getPet, petSizeFactor, type PetAnim } from '@office/shared';
 import { useGame } from '../store/useGame';
 import { toLit } from './Avatar';
+import { petTintTexture } from './petTint';
 import { local, petTargets, remoteTargets } from './runtime';
 
 export function petUrl(model: string): string {
@@ -57,7 +58,9 @@ function PetTag({ id }: { id: string }) {
             ))}
           </div>
         )}
-        <div className="rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-medium text-ink shadow whitespace-nowrap">🐾 {def.name}</div>
+        <div className="rounded-full bg-white/85 px-2 py-0.5 text-[11px] font-medium text-ink shadow whitespace-nowrap">
+          🐾 {pet.name || def.name}
+        </div>
         {pet.hp < PET.maxHp && pet.hp > 0 && (
           <div className="h-1 w-14 overflow-hidden rounded-full bg-black/30">
             <div
@@ -71,20 +74,38 @@ function PetTag({ id }: { id: string }) {
   );
 }
 
-function PetModel({ id, petType }: { id: string; petType: string }) {
+function PetModel({ id, petType, tint }: { id: string; petType: string; tint: string }) {
   const group = useRef<Group>(null);
   const body = useRef<Group>(null);
-  const { scene, animations } = useGLTF(petUrl(getPet(petType).model));
+  const def = getPet(petType);
+  const { scene, animations } = useGLTF(petUrl(def.model));
 
+  // 染過色的寵物要有自己的材質，否則同種類的其他寵物會跟著變色
+  const dyed = tint !== '';
   const instance = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((obj) => {
       if (!(obj instanceof Mesh)) return;
       obj.castShadow = true;
-      obj.material = Array.isArray(obj.material) ? obj.material.map(toLit) : toLit(obj.material);
+      const own = (mat: Material) => (dyed ? toLit(mat).clone() : toLit(mat));
+      obj.material = Array.isArray(obj.material) ? obj.material.map(own) : own(obj.material);
     });
     return clone;
-  }, [scene]);
+  }, [scene, dyed]);
+
+  // 染色貼圖是在 canvas 上重畫色票，第一次要等生成；好了再套上去
+  const [, forceRedraw] = useState(0);
+  useEffect(() => {
+    if (!dyed) return;
+    const texture = petTintTexture(tint, () => forceRedraw((n) => n + 1));
+    if (!texture) return;
+    instance.traverse((obj) => {
+      if (!(obj instanceof Mesh) || Array.isArray(obj.material)) return;
+      const mat = obj.material as MeshStandardMaterial;
+      mat.map = texture;
+      mat.needsUpdate = true;
+    });
+  }, [instance, dyed, tint]);
 
   const { actions, mixer } = useAnimations(animations, body);
   const current = useRef<string | null>(null);
@@ -203,7 +224,7 @@ export function Pets() {
     <>
       {Object.values(pets).map((p) => (
         <Suspense key={p.id} fallback={null}>
-          <PetModel id={p.id} petType={p.petType} />
+          <PetModel id={p.id} petType={p.petType} tint={p.tint} />
         </Suspense>
       ))}
     </>

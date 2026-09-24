@@ -29,11 +29,30 @@ export async function initDb(): Promise<boolean> {
         email         text NOT NULL,
         name          text NOT NULL,
         avatar_id     text NOT NULL,
+        coins         integer NOT NULL DEFAULT 0,
         created_at    timestamptz NOT NULL DEFAULT now(),
         last_login_at timestamptz
       )
     `);
-    logger.info('資料庫：已連線，users 表就緒');
+    // 舊資料庫補上後來才加的欄位
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS coins integer NOT NULL DEFAULT 0');
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS hat_id text NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS outfit_id text NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS weapon_id text NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS pet_id text NOT NULL DEFAULT ''");
+    // 已購買的商品；商品本身定義在程式碼裡（shared/data/shop.ts），這裡只記誰買了什麼
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_items (
+        user_id   uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        item_id   text NOT NULL,
+        bought_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (user_id, item_id)
+      )
+    `);
+    // 寵物可以取名；其他類型的商品用不到，留空
+    await pool.query("ALTER TABLE user_items ADD COLUMN IF NOT EXISTS nickname text NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE user_items ADD COLUMN IF NOT EXISTS tint text NOT NULL DEFAULT ''");
+    logger.info('資料庫：已連線，users / user_items 表就緒');
     return true;
   } catch (err) {
     logger.error('資料庫連線失敗，會員功能停用', err);

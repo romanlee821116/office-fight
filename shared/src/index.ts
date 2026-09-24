@@ -9,3 +9,4 @@ export * from './data/weapons';
 export * from './data/pets';
 export * from './data/coaster';
 export * from './data/xmas';
+export * from './data/shop';

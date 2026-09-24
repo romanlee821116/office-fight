@@ -236,6 +236,12 @@ export const PET = {
   tagHeight: 1.15,
   /** 最多餵幾次；餵滿時體型為兩倍 */
   feedMax: 5,
+  /** 跟班寵物：跟在主人身後這麼遠 */
+  followDistance: 1.3,
+  /** 離主人超過這個距離才開始追 */
+  followSlack: 0.5,
+  /** 追太久追不上（卡住或主人瞬移）就直接拉到身邊 */
+  followTeleportDist: 14,
   /** 抱起的互動距離 */
   pickupRange: 1.5,
   /** 抱著時寵物在頭頂的高度 */
@@ -338,7 +344,7 @@ export const NPC_PIN_LINES: Record<NpcHazard, readonly string[]> = {
 };
 
 /** 打倒過丁oe的人，名牌上掛的稱號 */
-export const NPC_SLAYER_TITLE = '勞工勇士';
+export const NPC_SLAYER_TITLE = '勞工楷模';
 
 /** 被視線照到時的喊話（抓人專用，不進隨機台詞池） */
 export const NPC_CATCH_LINE = '還想遠端啊？給我滾回辦公室😡';
@@ -705,6 +711,18 @@ export const IDLE = {
   checkIntervalMs: 30 * 1000,
 };
 export const MAX_CLIENTS = 20;
+
+/** 上班賺錢：只有登入會員坐在辦公室電腦桌前才會累積 */
+export const COINS = {
+  /** 每滿這段時間結算一次；搭配 perTick 等於時薪 720 */
+  tickMs: 5 * 1000,
+  /** 每次結算入帳的金幣數 */
+  perTick: 1,
+  /** 未寫回資料庫的金幣定期落盤的間隔 */
+  flushMs: 30 * 1000,
+  /** 首次以 Google 帳號註冊時送的見面禮；已經註冊過的人再登入不會再送 */
+  signupBonus: 3000,
+};
 
 /** 文字限制 */
 export const NAME_MIN = 2;

@@ -54,12 +54,13 @@ import {
   sendSwing,
 } from '../net/client';
 import { useGame } from '../store/useGame';
+import { AimGuide } from './AimGuide';
 import { Avatar } from './Avatar';
 import { FireFX } from './FireFX';
 import { NameTag } from './NameTag';
 import { TeamRing } from './TeamRing';
 import { canAttack, local, npcTarget, petTargets, remoteTargets, rig, toggleDance, toggleExercise, triggerEmote, triggerSwing } from './runtime';
-import { useKeyboard } from './useKeyboard';
+import { uiCapturingKeys, useKeyboard } from './useKeyboard';
 
 /** 每隔幾幀掃描一次附近座位 */
 const SEAT_SCAN_INTERVAL = 6;
@@ -177,7 +178,7 @@ export function LocalPlayer() {
   // E：撿武器 / 坐下 / 起身；空白鍵：攻擊；Q：放下武器；R：吃掉食物；數字鍵：表情
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target) || e.repeat) return;
+      if (isTyping(e.target) || uiCapturingKeys() || e.repeat) return;
       if (e.code === 'Space') {
         e.preventDefault();
         // 匹克球比賽中：空白鍵是揮拍
@@ -392,6 +393,7 @@ export function LocalPlayer() {
 
       const speed = k.run ? RUN_SPEED : WALK_SPEED;
       anim = k.run ? 'run' : 'walk';
+      local.rotY = lerpAngle(local.rotY, Math.atan2(dirX, dirZ), 1 - Math.exp(-dt * 14));
       const step = Math.min(dt, 0.05) * speed;
       const next = moveWithCollision({ x: local.x, z: local.z }, dirX * step, dirZ * step, undefined, obstaclePlayers());
       // 分隊比賽中走不出場地（伺服端也會夾一次，兩邊用同一條式子）；自由模式想走就走
@@ -399,8 +401,6 @@ export function LocalPlayer() {
       local.x = bounded.x;
       local.z = bounded.z;
 
-      const targetRot = Math.atan2(dirX, dirZ);
-      local.rotY = lerpAngle(local.rotY, targetRot, 1 - Math.exp(-dt * 14));
       local.emote = null;
       local.dance = null;
       local.exercise = null;
@@ -484,16 +484,21 @@ export function LocalPlayer() {
   const onFire = useGame((s) => (me ? (s.players[me.sessionId]?.onFire ?? false) : false));
   const snowTeam = useGame((s) => (me ? (s.players[me.sessionId]?.snowTeam ?? '') : ''));
   const snowMode = useGame((s) => (me ? (s.players[me.sessionId]?.snowMode ?? false) : false));
+  const fightMode = useGame((s) => (me ? (s.players[me.sessionId]?.fightMode ?? false) : false));
   const crowned = useGame((s) => (me ? (s.players[me.sessionId]?.npcSlayer ?? false) : false));
+  const hatId = useGame((s) => (me ? (s.players[me.sessionId]?.hatId ?? '') : ''));
+  const outfitId = useGame((s) => (me ? (s.players[me.sessionId]?.outfitId ?? '') : ''));
   if (!me) return null;
   const avatar = getAvatar(me.avatarId);
 
   return (
     <group ref={group}>
       <group ref={tilt}>
-        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} />
+        <Avatar avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} hatId={hatId} outfitId={outfitId} />
       </group>
       {onFire && <FireFX position={[0, 1.72, 0]} scale={0.55} rate={26} />}
+      {/* 拿著遠程武器且進入戰鬥狀態時，把命中判定畫在地上 */}
+      {(fightMode || snowMode) && <AimGuide weaponId={weaponId} />}
       <NameTag sessionId={me.sessionId} isMe />
       {/* 腳下標示圈；分隊打雪仗時外圈再加一道隊伍色 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>

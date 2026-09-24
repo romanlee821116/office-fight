@@ -21,8 +21,20 @@ export class Player extends Schema {
   @type('boolean') snowMode: boolean = false;
   /** '' | 'red' | 'blue'；有隊伍但 snowMode 為 false 代表這場已經出局 */
   @type('string') snowTeam: string = '';
-  /** 打倒過丁oe：頭上戴皇冠、名牌掛「勞工勇士」，一路留到離線 */
+  /** 打倒過丁oe：頭上戴皇冠、名牌掛「勞工楷模」，一路留到離線 */
   @type('boolean') npcSlayer: boolean = false;
+  /** 是否為登入會員（只有會員坐在電腦桌前才會賺金幣） */
+  @type('boolean') member: boolean = false;
+  /** 目前擁有的金幣；會員為帳號累積值，訪客恆為 0 */
+  @type('uint32') coins: number = 0;
+  /** 戴著的頭飾商品 id，空字串代表沒戴 */
+  @type('string') hatId: string = '';
+  /** 穿著的服裝商品 id，空字串代表角色原本的外觀 */
+  @type('string') outfitId: string = '';
+  /** 裝備欄的武器商品 id，空字串代表沒裝備 */
+  @type('string') gearId: string = '';
+  /** 跟班寵物的商品 id，空字串代表沒帶 */
+  @type('string') petGearId: string = '';
 }
 
 export class Pickup extends Schema {
@@ -35,6 +47,12 @@ export class Pickup extends Schema {
 
 export class Pet extends Schema {
   @type('string') id: string = '';
+  /** 主人的 sessionId；非空代表這是買來的跟班，不會被攻擊也不會亂跑 */
+  @type('string') ownerId: string = '';
+  /** 主人取的名字，空字串代表用種類名 */
+  @type('string') name: string = '';
+  /** 染色 id（PET_TINTS），空字串代表原色 */
+  @type('string') tint: string = '';
   @type('string') petType: string = '';
   @type('float32') x: number = 0;
   @type('float32') z: number = 0;

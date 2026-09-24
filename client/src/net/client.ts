@@ -26,6 +26,11 @@ import {
   type MovePayload,
   type PlayerState,
   type RespawnEvent,
+  type BuyPayload,
+  type EquipPayload,
+  type RenamePetPayload,
+  type TintPetPayload,
+  type ShopEvent,
   type SitPayload,
   type SnowJoinPayload,
   type SnowTeam,
@@ -33,6 +38,7 @@ import {
   type SystemMessage,
 } from '@office/shared';
 import { useGame } from '../store/useGame';
+import { fetchMe, fetchRoomTicket } from './auth';
 import { beep, flashTitle, nativeNotify, stopFlashTitle } from '../lib/notify';
 import {
   applyKnockback,
@@ -145,6 +151,11 @@ function bindRoom(r: Room<OfficeStateShape>): void {
 
   store.resetPlayers();
   resetRuntime();
+  void fetchMe().then((profile) => {
+    useGame.getState().setOwnedItems(profile?.ownedItems ?? []);
+    useGame.getState().setPetNames(profile?.petNames ?? {});
+    useGame.getState().setPetTints(profile?.petTints ?? {});
+  });
 
   $(r.state).players.onAdd((player, sessionId) => {
     const isMe = sessionId === r.sessionId;
@@ -175,6 +186,12 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         snowMode: player.snowMode,
         snowTeam: player.snowTeam,
         npcSlayer: player.npcSlayer,
+        member: player.member,
+        coins: player.coins,
+        hatId: player.hatId,
+        outfitId: player.outfitId,
+        gearId: player.gearId,
+        petGearId: player.petGearId,
       });
     syncInfo();
 
@@ -190,6 +207,11 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     $(player).listen('snowMode', syncInfo);
     $(player).listen('snowTeam', syncInfo);
     $(player).listen('npcSlayer', syncInfo);
+    $(player).listen('coins', syncInfo);
+    $(player).listen('hatId', syncInfo);
+    $(player).listen('outfitId', syncInfo);
+    $(player).listen('gearId', syncInfo);
+    $(player).listen('petGearId', syncInfo);
 
     if (isMe) {
       // 坐下 / 起身由伺服端決定位置與朝向，本地收到後直接套用
@@ -268,7 +290,9 @@ function bindRoom(r: Room<OfficeStateShape>): void {
       flight: null,
     });
     const sync = () =>
-      useGame.getState().upsertPet({ id, petType: pet.petType, hp: pet.hp, carrierId: pet.carrierId, anim: pet.anim, feedCount: pet.feedCount });
+      useGame
+        .getState()
+        .upsertPet({ id, petType: pet.petType, hp: pet.hp, carrierId: pet.carrierId, anim: pet.anim, feedCount: pet.feedCount, ownerId: pet.ownerId, name: pet.name, tint: pet.tint });
     sync();
     // 高頻位置走可變 map（不觸發 re-render），血量與抱起狀態走 store
     $(pet).onChange(() => {
@@ -499,6 +523,21 @@ function bindRoom(r: Room<OfficeStateShape>): void {
     }
   });
 
+  r.onMessage<ShopEvent>(Messages.shop, (ev) => {
+    const s = useGame.getState();
+    if (!ev.ok) {
+      s.setShopNotice(ev.reason ?? '操作失敗');
+      return;
+    }
+    s.setShopNotice(null);
+    if (ev.kind === 'tint') {
+      // 顏色由伺服端回傳才寫進來，沒扣到錢就不會變色
+      s.setPetTints({ ...s.petTints, [ev.itemId]: ev.tint ?? '' });
+    } else {
+      s.addOwnedItem(ev.itemId);
+    }
+  });
+
   r.onMessage<SystemMessage>(Messages.system, (msg) => {
     useGame.getState().pushMessage({ id: `sys-${msg.ts}-${Math.random()}`, kind: 'system', text: msg.text, ts: msg.ts });
   });
@@ -528,6 +567,12 @@ function bindRoom(r: Room<OfficeStateShape>): void {
  * 若伺服器已重啟（免費雲端方案休眠後行程是全新的，token 必然失效），
  * 改以原本的暱稱與角色重新加入。總視窗 150 秒，足以等待冷啟動。
  */
+/** 每次加入房間都現換一張票；訪客沒有票，欄位留空 */
+async function joinWithTicket(c: Client, options: JoinOptions): Promise<Room<OfficeStateShape>> {
+  const ticket = await fetchRoomTicket();
+  return c.joinOrCreate<OfficeStateShape>(ROOM_NAME, ticket ? { ...options, ticket } : options);
+}
+
 async function tryReconnect(token: string): Promise<void> {
   useGame.getState().setPhase('reconnecting');
   const deadline = Date.now() + RECONNECT_TOTAL_MS;
@@ -543,9 +588,7 @@ async function tryReconnect(token: string): Promise<void> {
 
     try {
       if (!useToken && !lastJoinOptions) break;
-      const r = useToken
-        ? await client.reconnect<OfficeStateShape>(token)
-        : await client.joinOrCreate<OfficeStateShape>(ROOM_NAME, lastJoinOptions!);
+      const r = useToken ? await client.reconnect<OfficeStateShape>(token) : await joinWithTicket(client, lastJoinOptions!);
       bindRoom(r);
       const s = useGame.getState();
       s.setPhase('office');
@@ -579,7 +622,7 @@ export async function connect(options: JoinOptions): Promise<void> {
 
   try {
     client = client ?? new Client(endpoint());
-    const r = await client.joinOrCreate<OfficeStateShape>(ROOM_NAME, options);
+    const r = await joinWithTicket(client, options);
     lastJoinOptions = options;
     pendingLobbyMessage = null;
     bindRoom(r);
@@ -602,6 +645,22 @@ export function disconnect(): void {
 
 export function sendMove(payload: MovePayload): void {
   room?.send(Messages.move, payload);
+}
+
+export function sendBuy(itemId: string): void {
+  room?.send(Messages.buy, { itemId } satisfies BuyPayload);
+}
+
+export function sendRenamePet(itemId: string, name: string): void {
+  room?.send(Messages.renamePet, { itemId, name } satisfies RenamePetPayload);
+}
+
+export function sendTintPet(itemId: string, tint: string): void {
+  room?.send(Messages.tintPet, { itemId, tint } satisfies TintPetPayload);
+}
+
+export function sendEquip(hatId: string, outfitId: string, weaponId: string, petId: string): void {
+  room?.send(Messages.equip, { hatId, outfitId, weaponId, petId } satisfies EquipPayload);
 }
 
 export function sendSit(seatId: string): void {

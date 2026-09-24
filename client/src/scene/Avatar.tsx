@@ -6,6 +6,9 @@ import { AVATARS, DANCES, type AnimState, type AvatarDef } from '@office/shared'
 import { AvatarPrimitive } from './AvatarPrimitive';
 import { CHARACTER_SCALE, ONE_SHOT_PROCEDURAL, PROCEDURAL_BPM, dancePose, isProcedural, oneShotPose, type DancePose } from './dances';
 import { Crown } from './Crown';
+import { Hat } from './Hat';
+import { Skirt } from './Skirt';
+import { preloadOutfits, useOutfit } from './OutfitSkin';
 import { HeldWeapon } from './HeldWeapon';
 
 export { CHARACTER_SCALE };
@@ -92,6 +95,10 @@ interface AvatarProps {
   carrying?: boolean;
   /** 打倒過丁oe：頭上戴皇冠 */
   crowned?: boolean;
+  /** 買來的頭飾商品 id（皇冠優先，戴著皇冠時不顯示） */
+  hatId?: string;
+  /** 買來的服裝商品 id，空字串為角色原本的貼圖 */
+  outfitId?: string;
 }
 
 /** 抱寵物時的手臂姿勢：舉過頭頂、微微外開 */
@@ -113,12 +120,15 @@ export function toLit(mat: Material): Material {
   return lit;
 }
 
-function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crowned = false }: AvatarProps) {
+function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crowned = false, hatId = '', outfitId = '' }: AvatarProps) {
   const { scene, animations } = useGLTF(characterUrl(avatar.model));
   const group = useRef<Group>(null);
   const [hand, setHand] = useState<Object3D | null>(null);
   const [head, setHead] = useState<Object3D | null>(null);
+  const [torso, setTorso] = useState<Object3D | null>(null);
 
+  // instance 只能依賴 scene：重建會讓 useAnimations 的 mixer 還綁在舊物件上，
+  // 骨架就沒有動畫驅動、各部位散回原點。換裝造成的材質差異一律在 useOutfit 處理。
   const instance = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((obj) => {
@@ -130,12 +140,15 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crow
     return clone;
   }, [scene]);
 
+  useOutfit(instance, outfitId);
+
   const danceNodes = useRef<DanceNodes | null>(null);
   const dancing = useRef(false);
 
   useEffect(() => {
     setHand(instance.getObjectByName('arm-right') ?? null);
     setHead(instance.getObjectByName('head') ?? null);
+    setTorso(instance.getObjectByName('torso') ?? null);
     danceNodes.current = findDanceNodes(instance);
   }, [instance]);
 
@@ -262,11 +275,9 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crow
     <group ref={group} scale={CHARACTER_SCALE} rotation={[0, FACING_FIX, 0]}>
       <primitive object={instance} />
       <HeldWeapon weaponId={weaponId} hand={hand} />
-      {crowned && (
-        <Suspense fallback={null}>
-          <Crown head={head} />
-        </Suspense>
-      )}
+      <Skirt torso={torso} outfitId={outfitId} />
+      {/* 打倒丁oe的皇冠優先於買來的頭飾 */}
+      {crowned ? <Crown head={head} /> : hatId !== '' && <Hat head={head} hatId={hatId} />}
     </group>
   );
 }
@@ -276,11 +287,20 @@ function CharacterModel({ avatar, animRef, weaponId = '', carrying = false, crow
  * 載入前以程式生成幾何顯示。對外朝向為 +Z。
  */
 AVATARS.forEach((a) => useGLTF.preload(characterUrl(a.model)));
+preloadOutfits();
 
-export function Avatar({ avatar, animRef, weaponId = '', carrying = false, crowned = false }: AvatarProps) {
+export function Avatar({ avatar, animRef, weaponId = '', carrying = false, crowned = false, hatId = '', outfitId = '' }: AvatarProps) {
   return (
     <Suspense fallback={<AvatarPrimitive color={avatar.color} accent={avatar.accent} animRef={animRef} />}>
-      <CharacterModel avatar={avatar} animRef={animRef} weaponId={weaponId} carrying={carrying} crowned={crowned} />
+      <CharacterModel
+        avatar={avatar}
+        animRef={animRef}
+        weaponId={weaponId}
+        carrying={carrying}
+        crowned={crowned}
+        hatId={hatId}
+        outfitId={outfitId}
+      />
     </Suspense>
   );
 }

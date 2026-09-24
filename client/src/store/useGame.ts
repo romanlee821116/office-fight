@@ -45,8 +45,20 @@ export interface PlayerInfo {
   snowMode: boolean;
   /** 打雪仗隊伍（''＝自由模式或沒參加）；有隊伍但 snowMode 為 false 代表已出局 */
   snowTeam: string;
-  /** 打倒過丁oe：頭上戴皇冠、名牌掛「勞工勇士」 */
+  /** 打倒過丁oe：頭上戴皇冠、名牌掛「勞工楷模」 */
   npcSlayer: boolean;
+  /** 是否為登入會員（只有會員坐在電腦桌前會賺金幣） */
+  member: boolean;
+  /** 目前擁有的金幣 */
+  coins: number;
+  /** 戴著的頭飾商品 id */
+  hatId: string;
+  /** 穿著的服裝商品 id */
+  outfitId: string;
+  /** 裝備欄的武器商品 id */
+  gearId: string;
+  /** 跟班寵物的商品 id */
+  petGearId: string;
 }
 
 /** 打雪仗比賽狀態（伺服端同步） */
@@ -80,6 +92,12 @@ export interface PetInfo {
   anim: string;
   /** 被餵了幾次（影響體型與名牌高度） */
   feedCount: number;
+  /** 主人的 sessionId；非空代表是買來的跟班 */
+  ownerId: string;
+  /** 主人取的名字，空字串代表用種類名 */
+  name: string;
+  /** 染色 id，空字串代表原色 */
+  tint: string;
 }
 
 export interface PickupInfo {
@@ -197,6 +215,16 @@ interface GameState {
   reconnectStatus: string | null;
   /** 閒置警告：到期時間（Date.now 基準）與原因 */
   idleWarning: { reason: 'hidden' | 'inactive'; deadline: number } | null;
+  /** 我買過的商品 id（進場時向 /api/me 取得） */
+  ownedItems: string[];
+  /** 商店開著沒 */
+  shopOpen: boolean;
+  /** 商店的失敗提示（金幣不夠等） */
+  shopNotice: string | null;
+  /** 買過的寵物各自的名字（商品 id → 名字） */
+  petNames: Record<string, string>;
+  /** 買過的寵物各自的染色（商品 id → 染色 id） */
+  petTints: Record<string, string>;
 
   setPhase: (phase: Phase) => void;
   setError: (error: string | null) => void;
@@ -241,6 +269,12 @@ interface GameState {
   showToast: (text: string) => void;
   setReconnectStatus: (text: string | null) => void;
   setIdleWarning: (warning: { reason: 'hidden' | 'inactive'; deadline: number } | null) => void;
+  setOwnedItems: (items: string[]) => void;
+  addOwnedItem: (itemId: string) => void;
+  setShopOpen: (open: boolean) => void;
+  setShopNotice: (text: string | null) => void;
+  setPetNames: (names: Record<string, string>) => void;
+  setPetTints: (tints: Record<string, string>) => void;
   reset: () => void;
 }
 
@@ -264,6 +298,11 @@ const initial = {
   nearOven: false,
   oven: { foodId: '', stage: '' },
   weather: { code: -1, temp: 0, isDay: true },
+  ownedItems: [] as string[],
+  shopOpen: false,
+  shopNotice: null as string | null,
+  petNames: {} as Record<string, string>,
+  petTints: {} as Record<string, string>,
   weatherEnabled: readWeatherEnabled(),
   sceneTheme: readSceneTheme(),
   sceneThemeLoading: false,
@@ -291,6 +330,12 @@ export const useGame = create<GameState>((set) => ({
 
   setPhase: (phase) => set({ phase }),
   setError: (error) => set({ error }),
+  setOwnedItems: (ownedItems) => set({ ownedItems }),
+  addOwnedItem: (itemId) => set((s) => (s.ownedItems.includes(itemId) ? s : { ownedItems: [...s.ownedItems, itemId] })),
+  setShopOpen: (shopOpen) => set({ shopOpen, shopNotice: null }),
+  setShopNotice: (shopNotice) => set({ shopNotice }),
+  setPetNames: (petNames) => set({ petNames }),
+  setPetTints: (petTints) => set({ petTints }),
   setMe: (me) => set({ me }),
 
   upsertPlayer: (player) =>

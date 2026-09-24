@@ -2,7 +2,13 @@ import { Room, type Client } from '@colyseus/core';
 import {
   ANIM_STATES,
   AVATAR_IDS,
+  COINS,
   DUEL,
+  PET_TINTS,
+  PET_TINT_PRICE,
+  getShopItem,
+  isGearWeapon,
+  isItemOfKind,
   FIGHT,
   IDLE,
   NPC,
@@ -74,8 +80,13 @@ import {
   type NpcSpottedEvent,
   type NpcHazard,
   type NpcPinPayload,
+  type BuyPayload,
+  type EquipPayload,
+  type RenamePetPayload,
+  type TintPetPayload,
   type MovePayload,
   type PetFlightEvent,
+  type ShopEvent,
   type PickupPayload,
   type ProjectileEvent,
   type RespawnEvent,
@@ -87,6 +98,8 @@ import {
   type SystemMessage,
   type WeaponDef,
 } from '@office/shared';
+import { verifyTicket } from '../auth/session';
+import { addCoins, buyItem, equipItems, findUserById, listOwnedItems, listPetNames, listPetTints, setItemNickname, tintItem } from '../db/users.repo';
 import { logger } from '../logger';
 import { Npc, OfficeState, Pet, Pickup, Player } from './schema';
 
@@ -106,6 +119,18 @@ const FIST: WeaponDef = {
 
 const ANIMS = new Set<string>(ANIM_STATES);
 
+/** 隨身武器每隔這段時間自動回填一發 */
+const GEAR_AMMO_REFILL_MS = 2500;
+
+/** 商店的武器商品 id → weapons.ts 的武器 id */
+function shopWeaponId(shopItemId: string): string {
+  const item = getShopItem(shopItemId);
+  return item?.kind === 'weapon' ? item.asset : '';
+}
+
+/** 電腦桌前的座位 id（chair-0…7）；坐在這些位子上的會員才算在上班 */
+const OFFICE_DESK_SEAT_IDS = new Set(OFFICE_DESK_SEATS.map((seat) => seat.id));
+
 /** 掃描誰走進 / 走出雪仗場地的間隔 */
 const SNOW_ARENA_TICK_MS = 200;
 
@@ -118,6 +143,21 @@ const SIT_DISTANCE_TOLERANCE = 0.6;
 /** 速度驗證容忍係數（網路抖動 + 客戶端插補） */
 const SPEED_TOLERANCE = 1.6;
 const MIN_DT_MS = 10;
+
+/** onAuth 驗票成功後帶給 onJoin 的帳號資料 */
+interface AccountAuth {
+  userId: string;
+  coins: number;
+  hatId: string;
+  outfitId: string;
+  weaponId: string;
+  petId: string;
+  ownedItems: string[];
+  /** 買過的寵物各自的名字（商品 id → 名字） */
+  petNames: Record<string, string>;
+  /** 買過的寵物各自的染色（商品 id → 染色 id） */
+  petTints: Record<string, string>;
+}
 
 interface ClientMeta {
   /** 最後一次操作時間（僅伺服端，閒置判定用；不進同步 schema 以免高頻廣播） */
@@ -143,6 +183,16 @@ interface ClientMeta {
   hiddenSince: number | null;
   /** 已發出閒置警告，避免重複發送 */
   idleWarned: boolean;
+  /** 登入會員的 users.id；訪客為 null（不會累積金幣） */
+  userId: string | null;
+  /** 已入帳但還沒寫回資料庫的金幣 */
+  coinsUnsaved: number;
+  /** 這個帳號買過的商品 id（進場時載入，購買成功後補上） */
+  ownedItems: Set<string>;
+  /** 買過的寵物各自的名字（商品 id → 名字） */
+  petNames: Map<string, string>;
+  /** 買過的寵物各自的染色（商品 id → 染色 id） */
+  petTints: Map<string, string>;
 }
 
 /** 讓前端不要自動重連的關閉碼（等同使用者主動離開） */
@@ -285,6 +335,10 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<{ side: CourtSide }>(Messages.courtJoin, (client, payload) => this.handleCourtJoin(client, payload));
     this.onPlayerMessage(Messages.courtLeave, (client) => this.handleCourtLeave(client));
     this.onPlayerMessage<SwingPayload>(Messages.swing, (client, payload) => this.handleSwing(client, payload));
+    this.onPlayerMessage<BuyPayload>(Messages.buy, (client, payload) => void this.handleBuy(client, payload));
+    this.onPlayerMessage<EquipPayload>(Messages.equip, (client, payload) => void this.handleEquip(client, payload));
+    this.onPlayerMessage<RenamePetPayload>(Messages.renamePet, (client, payload) => void this.handleRenamePet(client, payload));
+    this.onPlayerMessage<TintPetPayload>(Messages.tintPet, (client, payload) => void this.handleTintPet(client, payload));
     // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
     this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
@@ -295,8 +349,12 @@ export class OfficeRoom extends Room<OfficeState> {
     this.clock.setInterval(() => this.restockKitchen(), PICKUPS.kitchenRestockMs);
     this.clock.setInterval(() => this.checkIdlePlayers(), IDLE.checkIntervalMs);
 
-    for (let i = 0; i < PET.count; i++) this.spawnPet(false);
+    // 場上隨機出現的野生寵物暫時關閉，只留福利社買來的跟班。
+    // 要恢復就把下面這行取消註解（spawnPet 已經只數野生的，不會被跟班佔名額）。
+    // for (let i = 0; i < PET.count; i++) this.spawnPet(false);
+    // tickPets 仍然要跑：跟班被主人抱起來時，位置是由它帶著走的
     this.clock.setInterval(() => this.tickPets(), PET.aiTickMs);
+    this.clock.setInterval(() => this.tickCompanionPets(), PET.aiTickMs);
     this.placeNpc();
     this.clock.setInterval(() => this.tickNpc(), NPC.aiTickMs);
     this.clock.setInterval(() => this.tickNpcHazard(), NPC.hazardTickMs);
@@ -304,6 +362,9 @@ export class OfficeRoom extends Room<OfficeState> {
     this.clock.setInterval(() => this.tickShipSweep(), SYNC_INTERVAL_MS);
     this.clock.setInterval(() => this.tickStoveBurn(), STOVE.burnTickMs);
     this.clock.setInterval(() => this.tickSnowArena(), SNOW_ARENA_TICK_MS);
+    this.clock.setInterval(() => this.tickSalary(), COINS.tickMs);
+    this.clock.setInterval(() => void this.flushCoins(), COINS.flushMs);
+    this.clock.setInterval(() => this.tickGearAmmo(), GEAR_AMMO_REFILL_MS);
 
     void this.refreshWeather();
     this.clock.setInterval(() => void this.refreshWeather(), WEATHER.refreshMs);
@@ -368,6 +429,303 @@ export class OfficeRoom extends Room<OfficeState> {
     client.leave(CLOSE_CONSENTED);
   }
 
+  /**
+   * 上班結算：登入會員只要坐在電腦桌前，每 COINS.tickMs 入帳 COINS.perTick 個金幣。
+   * 倒地時不算（被打趴在椅子上不該還有薪水）。
+   */
+  private tickSalary(): void {
+    for (const player of this.state.players.values()) {
+      const meta = this.meta.get(player.id);
+      if (!meta?.userId || player.hp <= 0) continue;
+      if (!OFFICE_DESK_SEAT_IDS.has(player.seatId)) continue;
+      player.coins += COINS.perTick;
+      meta.coinsUnsaved += COINS.perTick;
+    }
+  }
+
+  /** 把所有人未寫回的金幣落盤（定期執行，避免伺服器被砍掉時整段薪水消失） */
+  private async flushCoins(): Promise<void> {
+    for (const [sessionId, meta] of this.meta) await this.saveCoins(meta, sessionId);
+  }
+
+  /**
+   * 以增量寫回，同一帳號多個分頁也不會互相覆蓋；寫入成功後用資料庫回傳的總額校正畫面。
+   * 寫入失敗就把增量還回去，下一輪再試。
+   */
+  private async saveCoins(meta: ClientMeta, sessionId?: string): Promise<void> {
+    if (!meta.userId || meta.coinsUnsaved <= 0) return;
+    const delta = meta.coinsUnsaved;
+    meta.coinsUnsaved = 0;
+    try {
+      const total = await addCoins(meta.userId, delta);
+      const player = sessionId ? this.state.players.get(sessionId) : undefined;
+      if (total !== null && player) player.coins = total;
+    } catch (err) {
+      meta.coinsUnsaved += delta;
+      logger.error('金幣寫回資料庫失敗，稍後重試', err);
+    }
+  }
+
+  private sendShop(client: Client, kind: ShopEvent['kind'], ok: boolean, itemId: string, extra?: { tint?: string; reason?: string }): void {
+    client.send(Messages.shop, { kind, ok, itemId, ...extra } satisfies ShopEvent);
+  }
+
+  /**
+   * 購買：以資料庫餘額為準，所以先把這個人還沒落盤的薪水寫回去再扣款。
+   * 扣款與寫入擁有物在 buyItem() 的同一個交易裡，連點不會重複買到。
+   */
+  private async handleBuy(client: Client, payload: BuyPayload): Promise<void> {
+    const player = this.state.players.get(client.sessionId);
+    const meta = this.meta.get(client.sessionId);
+    if (!player || !meta) return;
+    if (!meta.userId) {
+      this.sendShop(client, 'buy', false, payload?.itemId ?? '', { reason: '登入後才能購買' });
+      return;
+    }
+    const item = getShopItem(payload?.itemId ?? '');
+    if (!item) {
+      this.sendShop(client, 'buy', false, payload?.itemId ?? '', { reason: '找不到這件商品' });
+      return;
+    }
+    if (meta.ownedItems.has(item.id)) {
+      this.sendShop(client, 'buy', false, item.id, { reason: '你已經有這件了' });
+      return;
+    }
+
+    await this.saveCoins(meta, client.sessionId);
+    const result = await buyItem(meta.userId, item.id, item.price);
+    if (!result.ok) {
+      const reason = result.reason === 'funds' ? '金幣不夠' : result.reason === 'owned' ? '你已經有這件了' : '購買失敗，請再試一次';
+      this.sendShop(client, 'buy', false, item.id, { reason });
+      return;
+    }
+    meta.ownedItems.add(item.id);
+    player.coins = result.coins;
+    this.sendShop(client, 'buy', true, item.id);
+    logger.info(`購買：${player.name} 買了 ${item.name}（${item.price}）`);
+  }
+
+  /** 穿戴：只能穿自己買過的東西，空字串代表脫下 */
+  private async handleEquip(client: Client, payload: EquipPayload): Promise<void> {
+    const player = this.state.players.get(client.sessionId);
+    const meta = this.meta.get(client.sessionId);
+    if (!player || !meta?.userId) return;
+
+    const hatId = typeof payload?.hatId === 'string' ? payload.hatId : '';
+    const outfitId = typeof payload?.outfitId === 'string' ? payload.outfitId : '';
+    const weaponId = typeof payload?.weaponId === 'string' ? payload.weaponId : '';
+    const petId = typeof payload?.petId === 'string' ? payload.petId : '';
+    if (!isItemOfKind(hatId, 'hat') || !isItemOfKind(outfitId, 'outfit') || !isItemOfKind(weaponId, 'weapon') || !isItemOfKind(petId, 'pet')) {
+      return;
+    }
+    for (const id of [hatId, outfitId, weaponId, petId]) {
+      if (id && !meta.ownedItems.has(id)) return;
+    }
+
+    player.hatId = hatId;
+    player.outfitId = outfitId;
+    if (player.gearId !== weaponId) {
+      player.gearId = weaponId;
+      // 換裝備時若手上拿的正是舊的隨身武器，直接換成新的（手上是撿來的就不動）
+      if (!player.weaponId || isGearWeapon(player.weaponId)) this.giveGearWeapon(player);
+    }
+    if (player.petGearId !== petId) {
+      player.petGearId = petId;
+      this.syncCompanionPet(player);
+    }
+    try {
+      await equipItems(meta.userId, hatId, outfitId, weaponId, petId);
+    } catch (err) {
+      logger.error('穿戴寫回資料庫失敗', err);
+    }
+  }
+
+  /** 幫買過的某隻寵物取名（不必是目前帶著的）；名字沿用暱稱的規則（2～12 字） */
+  private async handleRenamePet(client: Client, payload: RenamePetPayload): Promise<void> {
+    const player = this.state.players.get(client.sessionId);
+    const meta = this.meta.get(client.sessionId);
+    if (!player || !meta?.userId) return;
+    const itemId = typeof payload?.itemId === 'string' ? payload.itemId : '';
+    if (!isItemOfKind(itemId, 'pet') || !itemId || !meta.ownedItems.has(itemId)) return;
+    const name = sanitizeName(payload?.name);
+    if (!name) return;
+
+    meta.petNames.set(itemId, name);
+    // 正好是身邊那隻就立刻換名牌
+    if (player.petGearId === itemId) {
+      const pet = this.companionOf(player.id);
+      if (pet) pet.name = name;
+    }
+    try {
+      await setItemNickname(meta.userId, itemId, name);
+    } catch (err) {
+      logger.error('寵物取名寫回資料庫失敗', err);
+    }
+  }
+
+  /** 幫買過的某隻寵物染色。每次染色都要付 PET_TINT_PRICE，換色要再付一次 */
+  private async handleTintPet(client: Client, payload: TintPetPayload): Promise<void> {
+    const player = this.state.players.get(client.sessionId);
+    const meta = this.meta.get(client.sessionId);
+    if (!player || !meta?.userId) return;
+    const itemId = typeof payload?.itemId === 'string' ? payload.itemId : '';
+    const tint = typeof payload?.tint === 'string' ? payload.tint : '';
+    if (!isItemOfKind(itemId, 'pet') || !itemId || !meta.ownedItems.has(itemId)) return;
+    // 空字串是「恢復原色」，不用染料所以免費
+    if (tint !== '' && !PET_TINTS.some((t) => t.id === tint)) return;
+    if ((meta.petTints.get(itemId) ?? '') === tint) return; // 已經是這個顏色，不重複收費
+
+    // 餘額以資料庫為準，先把還沒落盤的薪水寫回去
+    await this.saveCoins(meta, client.sessionId);
+    const coins = await tintItem(meta.userId, itemId, tint, tint === '' ? 0 : PET_TINT_PRICE);
+    if (coins === null) {
+      this.sendShop(client, 'tint', false, itemId, { reason: '金幣不夠' });
+      return;
+    }
+    player.coins = coins;
+    meta.petTints.set(itemId, tint);
+    if (player.petGearId === itemId) {
+      const pet = this.companionOf(player.id);
+      if (pet) pet.tint = tint;
+    }
+    this.sendShop(client, 'tint', true, itemId, { tint });
+  }
+
+  private companionOf(ownerId: string): Pet | null {
+    for (const pet of this.state.pets.values()) if (pet.ownerId === ownerId) return pet;
+    return null;
+  }
+
+  /** 商店的寵物商品 id → pets.ts 的種類 id */
+  private petTypeOf(shopItemId: string): string {
+    const item = getShopItem(shopItemId);
+    return item?.kind === 'pet' ? item.asset : '';
+  }
+
+  /** 讓場上的跟班寵物與玩家目前帶的那隻一致（換了種類就換一隻，取消就收走） */
+  private syncCompanionPet(player: Player): void {
+    const petType = this.petTypeOf(player.petGearId);
+    const existing = this.companionOf(player.id);
+    if (existing && existing.petType === petType) return;
+    if (existing) this.removeCompanionPet(player.id);
+    if (!petType) return;
+
+    const pet = new Pet();
+    pet.id = `pet${++this.petSeq}`;
+    pet.ownerId = player.id;
+    pet.petType = petType;
+    // 出現在主人身後，免得從場地另一端一路跑過來
+    pet.x = player.x - Math.sin(player.rotY) * PET.followDistance;
+    pet.z = player.z - Math.cos(player.rotY) * PET.followDistance;
+    pet.rotY = player.rotY;
+    pet.anim = 'idle';
+    pet.hp = PET.maxHp;
+    pet.name = this.meta.get(player.id)?.petNames.get(player.petGearId) ?? '';
+    pet.tint = this.meta.get(player.id)?.petTints.get(player.petGearId) ?? '';
+    this.state.pets.set(pet.id, pet);
+    // 不進 petAi：跟班不跑隨機 AI，由 tickCompanionPets 帶著走
+  }
+
+  private removeCompanionPet(ownerId: string): void {
+    const pet = this.companionOf(ownerId);
+    if (!pet) return;
+    this.state.pets.delete(pet.id);
+    this.petAi.delete(pet.id);
+  }
+
+  /**
+   * 跟班寵物：走到主人身後 followDistance 的位置。
+   * 距離越遠跑越快（上限比玩家衝刺再快一點，才追得上），
+   * 落後太多或被卡住就直接拉到主人身邊。
+   */
+  private tickCompanionPets(): void {
+    const dt = PET.aiTickMs / 1000;
+    for (const pet of this.state.pets.values()) {
+      if (!pet.ownerId) continue;
+      const owner = this.state.players.get(pet.ownerId);
+      if (!owner) {
+        this.removeCompanionPet(pet.ownerId);
+        continue;
+      }
+      if (pet.carrierId) continue; // 被主人抱著時位置由 tickPets 處理
+      if (pet.anim === 'thrown') continue; // 主人把牠丟出去的期間交給飛行邏輯，落地後自己追回來
+
+      const spot = { x: owner.x - Math.sin(owner.rotY) * PET.followDistance, z: owner.z - Math.cos(owner.rotY) * PET.followDistance };
+      const dx = spot.x - pet.x;
+      const dz = spot.z - pet.z;
+      const dist = Math.hypot(dx, dz);
+
+      if (dist > PET.followTeleportDist) {
+        pet.x = spot.x;
+        pet.z = spot.z;
+        pet.rotY = owner.rotY;
+        pet.anim = 'idle';
+        continue;
+      }
+      if (dist <= PET.followSlack) {
+        if (pet.anim === 'walk') pet.anim = 'idle';
+        continue;
+      }
+
+      // 落後越多跑越快，夾在寵物散步速度與「比衝刺再快一點」之間
+      const speed = Math.min(RUN_SPEED * 1.15, PET.walkSpeed + dist * 1.2);
+      const step = Math.min(dist, speed * dt);
+      const to = moveWithCollision({ x: pet.x, z: pet.z }, (dx / dist) * step, (dz / dist) * step, PET.radius);
+      pet.x = to.x;
+      pet.z = to.z;
+      pet.rotY = Math.atan2(dx, dz);
+      pet.anim = 'walk';
+    }
+  }
+
+  /** 把裝備欄的武器放到手上（沒裝備就清空）。坐著、雪仗、比賽中不動手上的東西 */
+  private giveGearWeapon(player: Player): void {
+    if (player.snowMode || this.courtSideOf(player.id)) return;
+    const weapon = WEAPON_BY_ID.get(shopWeaponId(player.gearId));
+    if (!weapon) {
+      if (isGearWeapon(player.weaponId)) {
+        player.weaponId = '';
+        player.ammo = 0;
+      }
+      return;
+    }
+    player.weaponId = weapon.id;
+    player.ammo = weapon.ammo ?? 0;
+  }
+
+  /**
+   * 隨身武器的彈藥自動回填：打完不必跑回某個地方補，等一下就有。
+   * 只補裝備欄的武器，撿來的食物武器維持用完即丟。
+   */
+  private tickGearAmmo(): void {
+    for (const player of this.state.players.values()) {
+      if (player.hp <= 0 || !isGearWeapon(player.weaponId)) continue;
+      const weapon = WEAPON_BY_ID.get(player.weaponId);
+      if (weapon?.ammo && player.ammo < weapon.ammo) player.ammo += 1;
+    }
+  }
+
+  /**
+   * 進場票驗完才知道這是哪個帳號。訪客（沒票或票過期）一樣能玩，只是不會賺錢。
+   * 回傳值會放進 client.auth，接著給 onJoin 用。
+   */
+  async onAuth(_client: Client, options: JoinOptions): Promise<true | AccountAuth> {
+    const userId = verifyTicket(options?.ticket);
+    if (!userId) return true;
+    try {
+      const user = await findUserById(userId);
+      if (!user) return true;
+      const ownedItems = await listOwnedItems(user.id);
+      const petNames = await listPetNames(user.id);
+      const petTints = await listPetTints(user.id);
+      return { userId: user.id, coins: user.coins, hatId: user.hatId, outfitId: user.outfitId, weaponId: user.weaponId, petId: user.petId, ownedItems, petNames, petTints };
+    } catch (err) {
+      // 資料庫暫時不通時照樣讓人進場，只是這次當訪客
+      logger.error('讀取會員資料失敗，本次以訪客進場', err);
+      return true;
+    }
+  }
+
   onJoin(client: Client, options: JoinOptions): void {
     // 進場密碼（與暱稱驗證同一條路徑：throw 會被 Colyseus 轉成前端可讀的錯誤）
     if (JOIN_CODE && (typeof options?.joinCode !== 'string' || options.joinCode.trim() !== JOIN_CODE)) {
@@ -397,6 +755,15 @@ export class OfficeRoom extends Room<OfficeState> {
     player.weaponId = '';
     player.ammo = 0;
     player.npcSlayer = false;
+    const auth = client.auth as AccountAuth | true | undefined;
+    const account = auth && auth !== true ? auth : null;
+    player.member = account !== null;
+    player.coins = account?.coins ?? 0;
+    player.hatId = account?.hatId ?? '';
+    player.outfitId = account?.outfitId ?? '';
+    player.gearId = account?.weaponId ?? '';
+    player.petGearId = account?.petId ?? '';
+    this.giveGearWeapon(player);
 
     this.state.players.set(client.sessionId, player);
     this.meta.set(client.sessionId, {
@@ -412,8 +779,14 @@ export class OfficeRoom extends Room<OfficeState> {
       snowReentry: false,
       hiddenSince: null,
       idleWarned: false,
+      userId: account?.userId ?? null,
+      coinsUnsaved: 0,
+      ownedItems: new Set(account?.ownedItems ?? []),
+      petNames: new Map(Object.entries(account?.petNames ?? {})),
+      petTints: new Map(Object.entries(account?.petTints ?? {})),
     });
 
+    this.syncCompanionPet(player);
     this.broadcastSystem(`${name} 進入了辦公室`);
     logger.info(`加入：${name} (${client.sessionId})，目前 ${this.state.players.size} 人`);
   }
@@ -436,6 +809,7 @@ export class OfficeRoom extends Room<OfficeState> {
     }
 
     const leavingMeta = this.meta.get(client.sessionId);
+    if (leavingMeta) await this.saveCoins(leavingMeta, client.sessionId);
     leavingMeta?.respawnTimer?.clear();
     leavingMeta?.rideTimer?.clear();
     this.clearInvitesFor(client.sessionId);
@@ -448,6 +822,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
     this.leaveSnow(player, 'forfeit');
+    this.removeCompanionPet(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.meta.delete(client.sessionId);
     this.npcDeskLock.delete(client.sessionId);
@@ -456,6 +831,7 @@ export class OfficeRoom extends Room<OfficeState> {
   }
 
   onDispose(): void {
+    void this.flushCoins();
     logger.info(`房間釋放：${this.roomId}`);
   }
 
@@ -692,6 +1068,7 @@ export class OfficeRoom extends Room<OfficeState> {
     let petTarget: Pet | null = null;
     if (!target && !attacker.duelWith) {
       for (const pet of this.state.pets.values()) {
+        if (pet.ownerId) continue; // 跟班打不到
         if (pet.anim === 'dead' || pet.anim === 'thrown' || pet.carrierId) continue;
         const dx = pet.x - attacker.x;
         const dz = pet.z - attacker.z;
@@ -895,8 +1272,12 @@ export class OfficeRoom extends Room<OfficeState> {
       this.state.pickups.delete(pickup.id);
       return;
     }
-    // 手上已有武器：放回原地交換
+    // 手上已有武器：放回原地交換（隨身武器不落地，直接被撿到的取代）
     if (player.weaponId) this.dropWeapon(player);
+    if (isGearWeapon(player.weaponId)) {
+      player.weaponId = '';
+      player.ammo = 0;
+    }
     this.state.pickups.delete(pickup.id);
     player.weaponId = weapon.id;
     player.ammo = weapon.ammo ?? 0;
@@ -917,6 +1298,8 @@ export class OfficeRoom extends Room<OfficeState> {
       player.ammo = 0;
       return;
     }
+    // 福利社買的隨身武器丟不掉，也不會變成地上的道具
+    if (isGearWeapon(player.weaponId)) return;
     this.addPickup(player.weaponId, player.x + 0.4, player.z + 0.4);
     player.weaponId = '';
     player.ammo = 0;
@@ -1080,9 +1463,11 @@ export class OfficeRoom extends Room<OfficeState> {
   }
 
   private spawnPet(announce = true): void {
-    if (this.state.pets.size >= PET.count) return;
+    // 只數野生的：買來的跟班跟著主人走，不佔場上隨機寵物的名額
+    const wild = [...this.state.pets.values()].filter((p) => !p.ownerId);
+    if (wild.length >= PET.count) return;
     // 盡量挑場上沒有的種類，避免同時三隻小貓
-    const inUse = new Set([...this.state.pets.values()].map((p) => p.petType));
+    const inUse = new Set(wild.map((p) => p.petType));
     const pool = PETS.filter((d) => !inUse.has(d.id));
     const candidates = pool.length > 0 ? pool : PETS;
     const def = candidates[Math.floor(Math.random() * candidates.length)];
@@ -1710,6 +2095,7 @@ export class OfficeRoom extends Room<OfficeState> {
     if (this.state.npc.carrierId === player.id) return; // 拖著路人時抱不了寵物
     const pet = this.state.pets.get(payload?.petId ?? '');
     if (!pet || pet.carrierId || pet.anim === 'dead' || pet.anim === 'thrown') return;
+    if (pet.ownerId && pet.ownerId !== player.id) return; // 別人的跟班抱不走
     if (Math.hypot(pet.x - player.x, pet.z - player.z) > PET.pickupRange + 0.6) return;
 
     pet.carrierId = player.id;
@@ -1969,6 +2355,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
   /** 對寵物結算一次命中：擊退、扣血、倒地與重生排程 */
   private applyHitToPet(attacker: Player, pet: Pet, dirX: number, dirZ: number, weapon: WeaponDef, impactOffset: number): void {
+    if (pet.ownerId) return; // 買來的跟班打不死，目標搜尋已排除，這裡再擋一次
     const now = Date.now();
     // 吃越胖越重，擊退距離隨體型縮短
     const kb = (weapon.knockback * PET.knockbackFactor) / petSizeFactor(pet.feedCount, PET.feedMax);
@@ -2022,6 +2409,7 @@ export class OfficeRoom extends Room<OfficeState> {
     let target: Pet | null = null;
     let bestDist = range;
     for (const pet of this.state.pets.values()) {
+      if (pet.ownerId) continue; // 跟班打不到
       if (pet.anim === 'dead' || pet.anim === 'thrown' || pet.carrierId) continue;
       const dx = pet.x - attacker.x;
       const dz = pet.z - attacker.z;
@@ -2047,6 +2435,7 @@ export class OfficeRoom extends Room<OfficeState> {
     player.anim = 'idle';
     player.seatId = '';
     player.onFire = false;
+    if (!player.weaponId) this.giveGearWeapon(player);
     if (meta) meta.lastMoveAt = Date.now();
     const event: RespawnEvent = { sessionId, x: spawn.x, z: spawn.z };
     this.broadcast(Messages.respawn, event);

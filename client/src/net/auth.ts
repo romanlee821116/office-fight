@@ -29,6 +29,21 @@ export async function saveMe(name: string, avatarId: string): Promise<void> {
   }
 }
 
+/**
+ * 換一張進場票帶進 Colyseus，伺服端才知道這個連線屬於哪個帳號（金幣要記到帳上）。
+ * 未登入或會員功能未啟用時回 null，照樣能以訪客身分進場。
+ */
+export async function fetchRoomTicket(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/ticket', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { ticket?: unknown };
+    return typeof data.ticket === 'string' ? data.ticket : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function logout(): Promise<void> {
   try {
     await fetch('/api/auth/logout', { method: 'POST' });

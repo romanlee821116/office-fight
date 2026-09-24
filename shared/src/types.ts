@@ -122,10 +122,76 @@ export interface MovePayload {
 }
 
 /** 已登入會員的資料（GET / PUT /api/me） */
+/** 商店商品類型：頭飾掛在頭上、服裝換角色貼圖 */
+export type ShopItemKind = 'hat' | 'outfit' | 'weapon' | 'pet';
+
+export interface ShopItem {
+  id: string;
+  kind: ShopItemKind;
+  name: string;
+  price: number;
+  /** hat：models/<asset>.glb；outfit：characters/Textures/<asset>.png */
+  asset: string;
+  /** hat 專用：戴在頭上的寬度與底部高度（頭節點局部座標） */
+  fit?: { width: number; baseY: number };
+}
+
+/** 購買商品（C→S） */
+export interface BuyPayload {
+  itemId: string;
+}
+
+/** 穿戴（C→S）；空字串代表脫下 */
+export interface EquipPayload {
+  hatId: string;
+  outfitId: string;
+  /** 隨身武器的商品 id */
+  weaponId: string;
+  /** 跟班寵物的商品 id */
+  petId: string;
+}
+
+/** 幫某隻買過的寵物取名（C→S）；不必是目前帶著的那隻 */
+export interface RenamePetPayload {
+  /** 寵物的商品 id */
+  itemId: string;
+  name: string;
+}
+
+/** 幫某隻買過的寵物染色（C→S）；每次染色都要付費 */
+export interface TintPetPayload {
+  itemId: string;
+  tint: string;
+}
+
+/** 購買 / 染色的結果（S→C） */
+export interface ShopEvent {
+  /** 這則回覆對應哪個動作 */
+  kind: 'buy' | 'tint';
+  ok: boolean;
+  itemId: string;
+  /** kind 為 tint 且成功時，染上的顏色 id */
+  tint?: string;
+  /** 失敗原因（ok 為 false 時才有） */
+  reason?: string;
+}
+
 export interface AuthMe {
   email: string;
   name: string;
   avatarId: string;
+  /** 帳號累積的金幣 */
+  coins: number;
+  /** 已購買的商品 id */
+  ownedItems: string[];
+  hatId: string;
+  outfitId: string;
+  weaponId: string;
+  petId: string;
+  /** 每隻買過的寵物各自的名字（商品 id → 名字） */
+  petNames: Record<string, string>;
+  /** 每隻買過的寵物各自的染色（商品 id → 染色 id） */
+  petTints: Record<string, string>;
 }
 
 /** 加入房間的選項 */
@@ -134,6 +200,11 @@ export interface JoinOptions {
   avatarId: string;
   /** 進場密碼（伺服端設定 JOIN_CODE 時必填） */
   joinCode?: string;
+  /**
+   * 會員進場票：向 /api/auth/ticket 換來的短期簽章，伺服端驗完才認得出這是哪個帳號。
+   * 訪客沒有票，進場後不會累積金幣。
+   */
+  ticket?: string;
 }
 
 /** 聊天訊息（S→C） */
@@ -185,6 +256,18 @@ export interface PlayerState {
   lastSeen: number;
   /** 打倒過丁oe，頭上戴皇冠 */
   npcSlayer: boolean;
+  /** 是否為登入會員（只有會員能上班賺錢） */
+  member: boolean;
+  /** 目前擁有的金幣；訪客恆為 0 */
+  coins: number;
+  /** 戴著的頭飾商品 id，空字串代表沒戴 */
+  hatId: string;
+  /** 穿著的服裝商品 id，空字串代表角色原本的外觀 */
+  outfitId: string;
+  /** 裝備欄的武器商品 id，空字串代表沒裝備 */
+  gearId: string;
+  /** 跟班寵物的商品 id，空字串代表沒帶 */
+  petGearId: string;
 }
 
 /** 武器類型：近戰揮擊 / 整個丟出去 / 發射投射物 */
@@ -205,6 +288,8 @@ export interface WeaponDef {
   ammo?: number;
   /** 投射物速度（m/s） */
   projectileSpeed?: number;
+  /** 裝備欄武器（福利社買來的隨身武器）：不會出現在地上、丟不掉、重生後還在 */
+  gear?: boolean;
   /** 投射物模型（shoot 類；throw 類飛出去的是武器本身） */
   projectileModel?: string;
   /** 彈藥用完後仍留在手上（雪球用完要走去雪堆補，手不會空掉） */
@@ -292,6 +377,12 @@ export type PetAnim = 'idle' | 'walk' | 'dance' | 'hit' | 'thrown' | 'eat' | 'de
 
 /** 前端讀取寵物 state 的結構型別（伺服端以 Schema 實作） */
 export interface PetState {
+  /** 主人的 sessionId；非空代表這是買來的跟班，不會被攻擊也不會亂跑 */
+  ownerId: string;
+  /** 主人取的名字，空字串代表用種類名 */
+  name: string;
+  /** 染色 id（PET_TINTS），空字串代表原色 */
+  tint: string;
   id: string;
   petType: string;
   x: number;
@@ -520,4 +611,9 @@ export const Messages = {
   courtShot: 'courtShot',
   chat: 'chat',
   system: 'system',
+  buy: 'buy',
+  equip: 'equip',
+  renamePet: 'renamePet',
+  tintPet: 'tintPet',
+  shop: 'shop',
 } as const;

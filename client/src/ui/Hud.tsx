@@ -2,6 +2,7 @@ import { cancelReconnect, disconnect } from '../net/client';
 import { phaseLabel, weatherInfo } from '../lib/weather';
 import { useGame } from '../store/useGame';
 import { ChatPanel } from './ChatPanel';
+import { CoinPurse } from './CoinPurse';
 import { CourtBanner } from './CourtBanner';
 import { DuelOverlay } from './DuelOverlay';
 import { IdleWarning } from './IdleWarning';
@@ -9,6 +10,7 @@ import { FightPanel } from './FightPanel';
 import { InteractionBar } from './InteractionBar';
 import { PlayerList } from './PlayerList';
 import { SceneSwitcher } from './SceneSwitcher';
+import { ShopPanel } from './ShopPanel';
 import { SnowPanel } from './SnowPanel';
 import { StatusEditor } from './StatusEditor';
 
@@ -58,7 +60,10 @@ export function Hud() {
           <CourtBanner />
         </div>
         <div className="flex flex-col items-end gap-2">
-          <PlayerList />
+          <div className="flex items-start gap-2">
+            <CoinPurse />
+            <PlayerList />
+          </div>
           <button
             type="button"
             onClick={disconnect}
@@ -98,6 +103,8 @@ export function Hud() {
         <InteractionBar />
         <ChatPanel />
       </div>
+
+      <ShopPanel />
     </div>
   );
 }

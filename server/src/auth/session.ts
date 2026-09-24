@@ -70,3 +70,20 @@ export function clearCookie(req: Request, res: Response, name: string): void {
 export function currentUserId(req: Request): string | null {
   return verify(readCookie(req, SESSION_COOKIE));
 }
+
+/** 進場票有效期間：夠前端拿到票後立刻連線，短到撿到也沒什麼用 */
+export const TICKET_TTL_MS = 2 * 60 * 1000;
+const TICKET_PREFIX = 'ticket:';
+
+/**
+ * Colyseus 的房間拿不到 HTTP cookie，改由前端先換一張短期票再帶進 joinOptions。
+ * payload 加前綴，票才不能反過來當成 session cookie 用。
+ */
+export function signTicket(userId: string): string {
+  return sign(`${TICKET_PREFIX}${userId}`, TICKET_TTL_MS);
+}
+
+export function verifyTicket(token: unknown): string | null {
+  const payload = verify(token);
+  return payload?.startsWith(TICKET_PREFIX) ? payload.slice(TICKET_PREFIX.length) : null;
+}

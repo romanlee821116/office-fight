@@ -178,7 +178,78 @@ WEAPONS.push({
   spawnable: false,
 });
 
+/**
+ * 泡棉玩具槍（Kenney Blaster Kit，CC0）：福利社買來的隨身武器。
+ *
+ * 設計上刻意不比撿來的食物武器強——同樣是 shoot 類，總傷害輸出對齊蛋糕噴奶油，
+ * 賣的是造型與「進場就有」的方便，而不是戰力。差別只在手感：射程遠一點、
+ * 彈匣大一點、射速各有不同，換來的是傷害更低。
+ *
+ * gear 為 true 代表這是裝備欄的武器：不會出現在地上、丟不掉、倒地重生後還在，
+ * 彈藥打完留在手上慢慢自動回填（keepWhenEmpty）。
+ */
+interface BlasterSpec {
+  id: string;
+  model: string;
+  name: string;
+  damage: number;
+  range: number;
+  cooldownMs: number;
+  ammo: number;
+  /** 顯示縮放：原始模型 0.42～1.64m，太長的縮到跟角色比例合理 */
+  scale: number;
+  /** 握把落在手掌的位置，由 scripts/blaster-grip.mts 從模型頂點算出 */
+  grip: [number, number, number];
+}
+
+/**
+ * 握持姿勢由 scripts/blaster-grip.mts 從模型頂點算出，要調整請改腳本重跑而不是手調。
+ *
+ * rotation 兩段都是必要的：
+ * - 繞 Y 180°：五把槍的模型槍口一律朝 -Z，而角色面向 +Z。
+ * - 繞 X 90°：武器掛在 arm-right 節點下，手臂垂下時那個節點的 Z 軸是垂直的，
+ *   不補這一下槍會直挺挺立在手邊。
+ *
+ * position 是握把的補償值——這五個模型的原點沒有對齊，握把在模型裡的位置
+ * 從 z = -0.12 到 z = +0.79 都有，所以每把都不一樣。
+ */
+const BLASTER_GRIP_ROTATION: [number, number, number] = [Math.PI / 2, Math.PI, 0];
+const BLASTERS: BlasterSpec[] = [
+  { id: 'blaster-pocket', model: 'blaster-b', name: '口袋泡棉槍', damage: 16, range: 9, cooldownMs: 260, ammo: 10, scale: 1, grip: [-0.2, -1.07, 0.19] },
+  { id: 'blaster-rapid', model: 'blaster-i', name: '連發泡棉槍', damage: 14, range: 10, cooldownMs: 200, ammo: 14, scale: 1, grip: [-0.2, -0.82, 0.19] },
+  { id: 'blaster-rifle', model: 'blaster-a', name: '會議室步槍', damage: 22, range: 12, cooldownMs: 420, ammo: 8, scale: 1, grip: [-0.2, -1.06, 0.22] },
+  { id: 'blaster-heavy', model: 'blaster-p', name: '重裝泡棉砲', damage: 30, range: 11, cooldownMs: 650, ammo: 6, scale: 0.9, grip: [-0.2, -0.89, 0.1] },
+  { id: 'blaster-sniper', model: 'blaster-e', name: '遠端工作狙擊槍', damage: 38, range: 18, cooldownMs: 900, ammo: 4, scale: 0.9, grip: [-0.25, -2.1, 0.13] },
+];
+
+for (const spec of BLASTERS) {
+  WEAPONS.push({
+    id: spec.id,
+    name: spec.name,
+    model: `blaster/${spec.model}`,
+    kind: 'shoot',
+    damage: spec.damage,
+    range: spec.range,
+    knockback: 1.2,
+    cooldownMs: spec.cooldownMs,
+    ammo: spec.ammo,
+    projectileSpeed: 20,
+    projectileModel: 'blaster/bullet-foam-tip',
+    keepWhenEmpty: true,
+    scale: spec.scale,
+    grip: { position: spec.grip, rotation: BLASTER_GRIP_ROTATION, scale: spec.scale / 0.65 },
+    spawnable: false,
+    gear: true,
+  });
+}
+
 export const WEAPON_BY_ID = new Map(WEAPONS.map((w) => [w.id, w]));
+
+/** 裝備欄武器（福利社買的），不會出現在地上也丟不掉 */
+export function isGearWeapon(id: string): boolean {
+  return WEAPON_BY_ID.get(id)?.gear === true;
+}
+
 export const SPAWNABLE_WEAPONS = WEAPONS.filter((w) => w.spawnable !== false);
 
 /**
