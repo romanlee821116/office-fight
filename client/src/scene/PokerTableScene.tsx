@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Billboard, Text } from '@react-three/drei';
+import { Html } from '@react-three/drei';
 import { FURNITURE, POKER_SEATS, RANK_LABELS, SUIT_LABELS, getAvatar, isPokerSeat, isRedCard, rankOf, suitOf, type AnimState } from '@office/shared';
 import { sendPokerSit } from '../net/client';
 import { useGame } from '../store/useGame';
@@ -28,11 +28,16 @@ function PokerNpc({ index, name, avatarId, folded }: { index: number; name: stri
   return (
     <group position={[seat.x, 0, seat.z]} rotation={[0, seat.rotY, 0]}>
       <Avatar avatar={getAvatar(avatarId)} animRef={anim} weaponId="" carrying={false} crowned={false} hatId="" outfitId="" faceUrl="" />
-      <Billboard position={[0, 1.95, 0]}>
-        <Text fontSize={0.16} color={folded ? '#9aa5b1' : '#2b2b2b'} outlineWidth={0.012} outlineColor="#ffffff" anchorX="center">
+      <Html position={[0, 1.95, 0]} center distanceFactor={14} zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
+        <div
+          className={
+            'select-none whitespace-nowrap rounded-full px-2.5 py-0.5 text-[12px] font-medium shadow ' +
+            (folded ? 'bg-white/70 text-ink/50' : 'bg-white/90 text-ink')
+          }
+        >
           {name}
-        </Text>
-      </Billboard>
+        </div>
+      </Html>
     </group>
   );
 }
@@ -41,20 +46,19 @@ function PokerNpc({ index, name, avatarId, folded }: { index: number; name: stri
 function BoardCard({ card, x }: { card: number; x: number }) {
   return (
     <group position={[x, TABLE_TOP_Y + 0.01, 0]}>
+      {/* 白色牌面用幾何畫，點數用 Html 貼上去——牌平放在桌上，字跟著相機轉才讀得到 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} castShadow>
         <planeGeometry args={[CARD_W, CARD_H]} />
         <meshStandardMaterial color="#ffffff" />
       </mesh>
-      <Text
-        position={[0, 0.002, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        fontSize={0.05}
-        color={isRedCard(card) ? '#cc2222' : '#222222'}
-        anchorX="center"
-        anchorY="middle"
-      >
-        {`${RANK_LABELS[rankOf(card)]}${SUIT_LABELS[suitOf(card)]}`}
-      </Text>
+      <Html position={[0, 0.004, 0]} center distanceFactor={9} zIndexRange={[40, 0]} style={{ pointerEvents: 'none' }}>
+        <div
+          className="select-none text-[13px] font-bold leading-none"
+          style={{ color: isRedCard(card) ? '#cc2222' : '#222222' }}
+        >
+          {`${RANK_LABELS[rankOf(card)]}${SUIT_LABELS[suitOf(card)]}`}
+        </div>
+      </Html>
     </group>
   );
 }
@@ -71,11 +75,11 @@ function Board() {
         <BoardCard key={card} card={card} x={startX + i * (CARD_W + 0.015)} />
       ))}
       {pot > 0 && (
-        <Billboard position={[TABLE.x, TABLE_TOP_Y + 0.33, 0]}>
-          <Text fontSize={0.13} color="#f5f0e6" outlineWidth={0.012} outlineColor="#1f3a2e" anchorX="center">
-            {`底池 ${pot}`}
-          </Text>
-        </Billboard>
+        <Html position={[TABLE.x, TABLE_TOP_Y + 0.33, 0]} center distanceFactor={14} zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
+          <div className="select-none whitespace-nowrap rounded-full bg-emerald-950/80 px-2.5 py-0.5 text-[12px] font-bold text-amber-100 shadow">
+            底池 {pot}
+          </div>
+        </Html>
       )}
     </group>
   );
@@ -118,11 +122,11 @@ function SeatHotspot({ index }: { index: number }) {
         <meshBasicMaterial color={hover ? '#FFD23D' : '#6FCF97'} transparent opacity={hover ? 0.95 : 0.5} depthWrite={false} />
       </mesh>
       {hover && (
-        <Billboard position={[0, 1.5, 0]}>
-          <Text fontSize={0.16} color="#2b2b2b" outlineWidth={0.014} outlineColor="#ffffff" anchorX="center">
+        <Html position={[0, 1.5, 0]} center distanceFactor={14} zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
+          <div className="select-none whitespace-nowrap rounded-full bg-ink px-2.5 py-0.5 text-[12px] font-medium text-white shadow">
             入座牌桌
-          </Text>
-        </Billboard>
+          </div>
+        </Html>
       )}
     </group>
   );
