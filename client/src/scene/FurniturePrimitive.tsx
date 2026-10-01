@@ -86,6 +86,41 @@ function Table({ f }: { f: FurnitureDef }) {
   );
 }
 
+/**
+ * 德州撲克牌桌：皮革外框包一塊綠呢檯面。
+ *
+ * 形狀沿用家具表的 w/d（就是原本那張會議長桌），只換材質與分層，
+ * 所以碰撞盒、座位與整個會議區的配置都不用動。
+ */
+function PokerTable({ f }: { f: FurnitureDef }) {
+  const rail = 0.22;
+  return (
+    <group>
+      {/* 皮革外框 */}
+      <mesh position={[0, f.h - 0.035, 0]} castShadow receiveShadow>
+        <boxGeometry args={[f.w, 0.09, f.d]} />
+        <meshStandardMaterial color="#6B3F2B" roughness={0.6} />
+      </mesh>
+      {/* 綠呢檯面：比外框內縮一圈，疊在上面一點點避免與外框共面 */}
+      <mesh position={[0, f.h + 0.016, 0]} receiveShadow>
+        <boxGeometry args={[f.w - rail, 0.03, f.d - rail]} />
+        <meshStandardMaterial color={f.color} roughness={0.95} />
+      </mesh>
+      {[
+        [-f.w / 2 + 0.2, -f.d / 2 + 0.2],
+        [f.w / 2 - 0.2, -f.d / 2 + 0.2],
+        [-f.w / 2 + 0.2, f.d / 2 - 0.2],
+        [f.w / 2 - 0.2, f.d / 2 - 0.2],
+      ].map(([x, z], i) => (
+        <mesh key={i} position={[x, (f.h - 0.09) / 2, z]} castShadow>
+          <boxGeometry args={[0.09, f.h - 0.09, 0.09]} />
+          <meshStandardMaterial color={LEG} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function Sofa({ f }: { f: FurnitureDef }) {
   const seatH = 0.42;
   return (
@@ -283,7 +318,7 @@ export function FurniturePrimitive({ f }: { f: FurnitureDef }) {
     case 'chair':
       return <Chair f={f} />;
     case 'table':
-      return <Table f={f} />;
+      return f.variant === 'poker-table' ? <PokerTable f={f} /> : <Table f={f} />;
     case 'sofa':
       return <Sofa f={f} />;
     case 'plant':

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { BUBBLE_DURATION_MS, CHAT_HISTORY, type NpcHazard, type SnowTeam } from '@office/shared';
+import { BUBBLE_DURATION_MS, CHAT_HISTORY, type NpcHazard, type PokerShowdownEntry, type SnowTeam } from '@office/shared';
 
 export type Phase = 'lobby' | 'connecting' | 'office' | 'reconnecting';
 
@@ -74,6 +74,79 @@ export interface SnowMatch {
   /** 結算時的獲勝隊伍（'' | 'red' | 'blue'） */
   winner: string;
 }
+
+/** 牌桌上的一個座位（公開資訊；底牌不在這裡） */
+export interface PokerSeatView {
+  /** 玩家 sessionId 或 NPC 的 npc:N；空字串代表空位 */
+  id: string;
+  name: string;
+  isNpc: boolean;
+  /** NPC 的角色外觀，用來在 3D 場景裡把人畫出來 */
+  avatarId: string;
+  chips: number;
+  bet: number;
+  folded: boolean;
+  allIn: boolean;
+  inHand: boolean;
+  /** 攤牌時亮出來的兩張牌 */
+  shown: number[];
+}
+
+/** 一手結束後要顯示的結算內容 */
+export interface PokerSummary {
+  /** 攤牌時各家亮出來的牌；沒人跟到底就是空的 */
+  entries: PokerShowdownEntry[];
+  /** 誰贏得多少 */
+  text: string;
+  /** 自己的籌碼是不是輸光了 */
+  busted: boolean;
+}
+
+/** 一手結束後要顯示的結算內容 */
+export interface PokerSummary {
+  /** 攤牌時各家亮出來的牌；沒人跟到底就是空的 */
+  entries: PokerShowdownEntry[];
+  /** 誰贏得多少 */
+  text: string;
+  /** 自己的籌碼是不是輸光了 */
+  busted: boolean;
+}
+
+/** 牌桌公開狀態（伺服端同步） */
+export interface PokerView {
+  /** idle | preflop | flop | turn | river | showdown */
+  street: string;
+  seats: PokerSeatView[];
+  /** 公共牌（0～5 張） */
+  board: number[];
+  pot: number;
+  /** 輪到哪個座位，-1 代表現在不等任何人 */
+  toAct: number;
+  /** 行動期限（Date.now 基準） */
+  deadline: number;
+  currentBet: number;
+  minRaise: number;
+  /** 上一手的結果播報 */
+  result: string;
+  /** 有沒有讓 NPC 陪打 */
+  npcs: boolean;
+}
+
+const EMPTY_POKER: PokerView = {
+  street: 'idle',
+  seats: [],
+  board: [],
+  pot: 0,
+  toAct: -1,
+  deadline: 0,
+  currentBet: 0,
+  minRaise: 0,
+  result: '',
+  npcs: true,
+};
+
+/** 牌桌播報保留幾則 */
+const POKER_LOG_MAX = 6;
 
 /** 路人 NPC 的名牌資料；位置與朝向不進 store，走 runtime 的 npcTarget 逐幀插補 */
 export interface NpcInfo {
@@ -187,6 +260,20 @@ interface GameState {
   sceneThemeLoading: boolean;
   /** 匹克球比賽狀態（伺服端同步） */
   court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number };
+  /** 牌桌公開狀態（伺服端同步） */
+/** 牌桌公開狀態（伺服端同步） */
+  poker: PokerView;
+  /** 自己的兩張底牌：伺服端私訊給本人，不在 state 裡 */
+  pokerHole: number[];
+  /** 牌桌播報（最新的在最後），只留最近幾則 */
+  pokerLog: string[];
+  /**
+   * 一手結束後的結算畫面；null 代表沒有要顯示的結果。
+   * 停到玩家自己關掉為止——牌一亮就被下一手收走的話，根本看不到誰是什麼牌。
+   */
+  pokerSummary: PokerSummary | null;
+  /** 本地玩家附近的空牌桌座位索引，-1 代表不在牌桌邊 */
+  nearPokerSeat: number;
   /** 本地玩家附近的報名點 */
   nearCourtSlot: 'A' | 'B' | null;
   /** 打雪仗比賽狀態（伺服端同步） */
@@ -257,6 +344,13 @@ interface GameState {
   setSceneTheme: (id: string) => void;
   setSceneThemeLoading: (loading: boolean) => void;
   setCourt: (court: { status: string; aId: string; bId: string; scoreA: number; scoreB: number }) => void;
+  setPoker: (poker: PokerView) => void;
+  setPokerHole: (cards: number[]) => void;
+  pushPokerLog: (text: string) => void;
+  setPokerSummary: (summary: PokerSummary | null) => void;
+  /** 把輸光的狀態併進目前的結算畫面（busted 事件會晚於 payout 送到） */
+  markPokerBusted: () => void;
+  setNearPokerSeat: (index: number) => void;
   setNearCourtSlot: (slot: 'A' | 'B' | null) => void;
   setSnow: (snow: SnowMatch) => void;
   setNearSnowSlot: (team: SnowTeam | null) => void;
@@ -316,6 +410,11 @@ const initial = {
   sceneTheme: readSceneTheme(),
   sceneThemeLoading: false,
   court: { status: 'idle', aId: '', bId: '', scoreA: 0, scoreB: 0 },
+  poker: EMPTY_POKER,
+  pokerHole: [] as number[],
+  pokerLog: [] as string[],
+  pokerSummary: null as PokerSummary | null,
+  nearPokerSeat: -1,
   nearCourtSlot: null,
   snow: { status: 'idle', startsAt: 0, winner: '' },
   nearSnowSlot: null,
@@ -396,6 +495,14 @@ export const useGame = create<GameState>((set) => ({
   setOven: (oven) => set({ oven }),
   setWeather: (weather) => set({ weather }),
   setCourt: (court) => set({ court }),
+  setPoker: (poker) => set({ poker }),
+  // 新的一手開始時會送空陣列過來，清掉上一手的牌
+  setPokerHole: (pokerHole) => set({ pokerHole }),
+  pushPokerLog: (text) => set((s) => ({ pokerLog: [...s.pokerLog, text].slice(-POKER_LOG_MAX) })),
+  setPokerSummary: (pokerSummary) => set({ pokerSummary }),
+  markPokerBusted: () =>
+    set((s) => ({ pokerSummary: s.pokerSummary ? { ...s.pokerSummary, busted: true } : { entries: [], text: '', busted: true } })),
+  setNearPokerSeat: (nearPokerSeat) => set((s) => (s.nearPokerSeat === nearPokerSeat ? s : { nearPokerSeat })),
   setNearCourtSlot: (nearCourtSlot) => set((s) => (s.nearCourtSlot === nearCourtSlot ? s : { nearCourtSlot })),
   setSnow: (snow) => set({ snow }),
   setNearSnowSlot: (nearSnowSlot) => set((s) => (s.nearSnowSlot === nearSnowSlot ? s : { nearSnowSlot })),

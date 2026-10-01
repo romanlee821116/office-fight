@@ -107,6 +107,11 @@ export interface Seat {
    * 前後端用同一條式子，所以不必為了同步多傳任何狀態。
    */
   ride?: { kind: 'carousel' | 'coaster' | 'ship'; index: number };
+  /**
+   * 不走一般的「走近按 E 坐下」流程，由各自的玩法自己處理入座。
+   * 牌桌就是這種：入座要先確認身分、從帳號金幣扣買入，不能被 findNearestSeat 隨手抓到。
+   */
+  manual?: boolean;
 }
 
 export interface SitPayload {
@@ -591,6 +596,48 @@ export interface CabinDef {
 }
 
 /** 訊息事件名稱 */
+/** 入座牌桌（C→S）；seatIndex 為 POKER_SEATS 的索引 */
+export interface PokerSitPayload {
+  seatIndex: number;
+}
+
+/** 要不要讓 NPC 陪打（C→S）。關掉之後桌上的 NPC 會在這一手結束時離席 */
+export interface PokerNpcsPayload {
+  enabled: boolean;
+}
+
+/** 牌桌動作（C→S）。raise 的 amount 是「本輪下注總額」，不是加注的增量 */
+export interface PokerActPayload {
+  action: 'fold' | 'check' | 'call' | 'raise';
+  amount: number;
+}
+
+/** 攤牌時亮出來的一手牌 */
+export interface PokerShowdownEntry {
+  seat: number;
+  name: string;
+  cards: number[];
+  /** 牌型中文名，例如「兩對」 */
+  hand: string;
+}
+
+/**
+ * 牌桌事件（S→C）。
+ *
+ * hole 是私訊給本人的底牌，其餘都是全桌廣播。公開狀態（籌碼、下注、公共牌、
+ * 輪到誰）走 schema，這裡只送「剛剛發生了什麼」這種一次性的東西。
+ */
+export type PokerEventPayload =
+  | { kind: 'hole'; cards: number[] }
+  | { kind: 'action'; seat: number; text: string }
+  | { kind: 'say'; seat: number; text: string }
+  | { kind: 'showdown'; entries: PokerShowdownEntry[] }
+  | { kind: 'payout'; text: string; winners: { seat: number; name: string; amount: number }[] }
+  /** 籌碼輸光被請下桌，只送給當事人；前端據此顯示重新買入的選項 */
+  | { kind: 'busted'; text: string }
+  /** 入座／動作被拒絕的原因，只送給發起的人 */
+  | { kind: 'error'; text: string };
+
 export const Messages = {
   move: 'move',
   setStatus: 'setStatus',
@@ -639,4 +686,10 @@ export const Messages = {
   wearTitle: 'wearTitle',
   titleEarned: 'titleEarned',
   shop: 'shop',
+  pokerSit: 'pokerSit',
+  pokerLeave: 'pokerLeave',
+  pokerAct: 'pokerAct',
+  pokerNpcs: 'pokerNpcs',
+  pokerContinue: 'pokerContinue',
+  pokerEvent: 'pokerEvent',
 } as const;

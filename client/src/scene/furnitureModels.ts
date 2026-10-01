@@ -54,11 +54,8 @@ function deskRecipe(f: FurnitureDef): Part[] {
 const BY_ID: Record<string, Part[]> = {
   'gymmat-1': [{ model: 'gym/gymmat', scale: 1.15, recolor: [{ from: [0, 0, 0], to: '#8FB58A' }] }],
   'gymmat-2': [{ model: 'gym/gymmat', scale: 1.15, recolor: [{ from: [0, 0, 0], to: '#C98FA8' }] }],
-  'meeting-table': [
-    { model: 'tableCross', dx: -0.85 },
-    { model: 'tableCross', dx: 0.85 },
-    { model: 'plantSmall1', dy: 0.7 },
-  ],
+  // meeting-table 現在是撲克牌桌，外觀走 FurniturePrimitive 的 PokerTable
+  // （Kenney 沒有牌桌模型，綠呢檯面與皮革外框自己畫比較像）
   'coffee-table': [{ model: 'tableCoffee' }, { model: 'books', dy: 0.46, dx: 0.2 }],
   'cabinet-3': [
     { model: 'bookcaseOpenLow', dx: -0.4 },

@@ -34,6 +34,7 @@ import {
   getPet,
   hasLineOfSight,
   isInOffice,
+  isPokerSeat,
   SHIP,
   SNOWFIGHT,
   SNOW_TEAM_LABEL,
@@ -96,6 +97,9 @@ import {
   type ProjectileEvent,
   type RespawnEvent,
   type Seat,
+  type PokerActPayload,
+  type PokerNpcsPayload,
+  type PokerSitPayload,
   type SitPayload,
   type SnowJoinPayload,
   type SnowTeam,
@@ -106,7 +110,8 @@ import {
 import { verifyTicket } from '../auth/session';
 import { currentFaceUrl } from '../db/faces.repo';
 import { EMPTY_STATS, bumpStat, grantTitle, listTitles, loadStats, wearTitle, type UserStats } from '../db/titles.repo';
-import { addCoins, buyItem, equipItems, findUserById, listOwnedItems, listPetNames, listPetTints, setItemNickname, tintItem } from '../db/users.repo';
+import { addCoins, buyItem, equipItems, findUserById, listOwnedItems, listPetNames, listPetTints, setItemNickname, spendCoins, tintItem } from '../db/users.repo';
+import { PokerRoom } from './pokerRoom';
 import { logger } from '../logger';
 import { Npc, OfficeState, Pet, Pickup, Player } from './schema';
 
@@ -143,6 +148,8 @@ const OFFICE_DESK_SEAT_IDS = new Set(OFFICE_DESK_SEATS.map((seat) => seat.id));
 
 /** 掃描誰走進 / 走出雪仗場地的間隔 */
 const SNOW_ARENA_TICK_MS = 200;
+/** 牌桌推進的節拍：行動倒數與 NPC 思考都靠它，不需要太密 */
+const POKER_TICK_MS = 250;
 
 /** 進場密碼：設定 JOIN_CODE 環境變數後，所有人進場都需輸入（公開網址部署時務必設定） */
 const JOIN_CODE = (process.env.JOIN_CODE ?? '').trim();
@@ -282,6 +289,8 @@ export class OfficeRoom extends Room<OfficeState> {
   private projectileSeq = 0;
   private petSeq = 0;
   private petAi = new Map<string, PetAi>();
+  /** 牌桌：規則在 pokerTable.ts，這裡只透過 PokerRoom 轉接 */
+  private poker!: PokerRoom;
   private npcDebug = process.env.NPC_DEBUG === '1';
   private npcAi: NpcAi = { mode: 'idle', until: 0, tx: 0, tz: 0, staggerUntil: 0, nextSpeakAt: 0, speakUntil: 0, lastLine: -1, nextCatchAt: 0 };
   /** 已經被丁oe逮到、正在喊話倒數的人（時間到才真的送回辦公室） */
@@ -332,6 +341,16 @@ export class OfficeRoom extends Room<OfficeState> {
 
   onCreate(): void {
     this.setState(new OfficeState());
+    this.poker = new PokerRoom(this.state, {
+      player: (sessionId) => this.state.players.get(sessionId),
+      isMember: (sessionId) => Boolean(this.meta.get(sessionId)?.userId),
+      charge: (sessionId, amount) => this.pokerCharge(sessionId, amount),
+      settle: (sessionId, amount) => this.pokerSettle(sessionId, amount),
+      send: (sessionId, payload) => this.clients.find((c) => c.sessionId === sessionId)?.send(Messages.pokerEvent, payload),
+      broadcastEvent: (payload) => this.broadcast(Messages.pokerEvent, payload),
+      system: (text) => this.broadcastSystem(text),
+      prepareForSeat: (sessionId) => this.prepareForPokerSeat(sessionId),
+    });
 
     this.onPlayerMessage<MovePayload>(Messages.move, (client, payload) => this.handleMove(client, payload));
     this.onPlayerMessage<string>(Messages.setStatus, (client, text) => this.handleStatus(client, text));
@@ -367,6 +386,11 @@ export class OfficeRoom extends Room<OfficeState> {
     this.onPlayerMessage<TintPetPayload>(Messages.tintPet, (client, payload) => void this.handleTintPet(client, payload));
     this.onPlayerMessage(Messages.faceChanged, (client) => void this.handleFaceChanged(client));
     this.onPlayerMessage<WearTitlePayload>(Messages.wearTitle, (client, payload) => void this.handleWearTitle(client, payload));
+    this.onPlayerMessage<PokerSitPayload>(Messages.pokerSit, (client, payload) => void this.poker.sit(client.sessionId, payload?.seatIndex ?? -1));
+    this.onPlayerMessage(Messages.pokerLeave, (client) => void this.poker.leave(client.sessionId));
+    this.onPlayerMessage<PokerActPayload>(Messages.pokerAct, (client, payload) => this.poker.act(client.sessionId, payload?.action, payload?.amount ?? 0));
+    this.onPlayerMessage<PokerNpcsPayload>(Messages.pokerNpcs, (client, payload) => this.poker.setNpcs(client.sessionId, Boolean(payload?.enabled)));
+    this.onPlayerMessage(Messages.pokerContinue, (client) => this.poker.continueHand(client.sessionId));
     // 分頁顯示狀態本身不算「操作」，所以不走 onPlayerMessage
     this.onMessage<boolean>(Messages.visibility, (client, hidden) => this.handleVisibility(client, hidden));
 
@@ -394,6 +418,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.clock.setInterval(() => this.tickActivity(), COINS.tickMs);
     this.clock.setInterval(() => void this.flushCoins(), COINS.flushMs);
     this.clock.setInterval(() => this.tickGearAmmo(), GEAR_AMMO_REFILL_MS);
+    this.clock.setInterval(() => this.poker.tick(), POKER_TICK_MS);
 
     void this.refreshWeather();
     this.clock.setInterval(() => void this.refreshWeather(), WEATHER.refreshMs);
@@ -520,6 +545,45 @@ export class OfficeRoom extends Room<OfficeState> {
       meta.coinsUnsaved += delta;
       logger.error('金幣寫回資料庫失敗，稍後重試', err);
     }
+  }
+
+  /**
+   * 牌桌買入：從帳號金幣扣款。
+   * 先把還沒落盤的薪水寫回去，否則剛賺到的錢在資料庫裡還看不到，會被誤判成餘額不足。
+   */
+  private async pokerCharge(sessionId: string, amount: number): Promise<boolean> {
+    const meta = this.meta.get(sessionId);
+    const player = this.state.players.get(sessionId);
+    if (!meta?.userId || !player || amount <= 0) return false;
+    await this.saveCoins(meta, sessionId);
+    const total = await spendCoins(meta.userId, amount);
+    if (total === null) return false;
+    player.coins = total;
+    return true;
+  }
+
+  /** 牌桌離座：把桌上剩下的籌碼加回帳號 */
+  private async pokerSettle(sessionId: string, amount: number): Promise<void> {
+    const meta = this.meta.get(sessionId);
+    if (!meta?.userId || amount <= 0) return;
+    try {
+      const total = await addCoins(meta.userId, amount);
+      const player = this.state.players.get(sessionId);
+      if (total !== null && player) player.coins = total;
+    } catch (err) {
+      logger.error('牌桌籌碼歸還失敗', err);
+    }
+  }
+
+  /** 入座前的清場：手上的東西放下、格鬥模式關掉，跟上球場前是同一套規矩 */
+  private prepareForPokerSeat(sessionId: string): void {
+    const player = this.state.players.get(sessionId);
+    if (!player) return;
+    this.dropCarriedPet(sessionId);
+    this.releaseNpc(sessionId);
+    this.dropWeapon(player);
+    this.leaveCourtIfPlaying(sessionId, true);
+    player.fightMode = false;
   }
 
   private sendShop(client: Client, kind: ShopEvent['kind'], ok: boolean, itemId: string, extra?: { tint?: string; reason?: string }): void {
@@ -1007,6 +1071,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
     this.leaveSnow(player, 'forfeit');
+    this.poker.forceLeave(player.id);
     this.removeCompanionPet(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.meta.delete(client.sessionId);
@@ -1016,6 +1081,8 @@ export class OfficeRoom extends Room<OfficeState> {
   }
 
   onDispose(): void {
+    // 桌上的籌碼要先還回帳號，否則伺服器一重開就憑空消失
+    void this.poker.disposeAll();
     void this.flushCoins();
     logger.info(`房間釋放：${this.roomId}`);
   }
@@ -1099,6 +1166,12 @@ export class OfficeRoom extends Room<OfficeState> {
     const meta = this.meta.get(client.sessionId);
     if (!player || !meta || !player.seatId) return;
 
+    // 牌桌起身要先結算籌碼，走撲克自己的離座流程
+    if (isPokerSeat(player.seatId)) {
+      void this.poker.leave(client.sessionId);
+      return;
+    }
+
     // 被丁oe抓回來的人，鎖定時間內起不來
     const lock = this.npcDeskLock.get(client.sessionId);
     if (lock && lock.seatId === player.seatId && Date.now() < lock.until) return;
@@ -1150,6 +1223,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
     this.leaveSnow(player, 'forfeit');
+    this.poker.forceLeave(player.id);
     this.broadcastSystem(message);
     logger.info(`${reason}：${player.name}`);
     const meta = this.meta.get(player.id);
@@ -2537,6 +2611,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.dropCarriedPet(player.id);
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
+    this.poker.forceLeave(player.id);
     if (player.duelWith) {
       const opponent = this.state.players.get(player.duelWith);
       if (opponent) this.endDuel(opponent, player, 'ko');
@@ -2966,6 +3041,7 @@ export class OfficeRoom extends Room<OfficeState> {
     this.dropCarriedPet(player.id);
     this.releaseNpc(player.id);
     this.leaveCourtIfPlaying(player.id, true);
+    this.poker.forceLeave(player.id);
     this.dropWeapon(player);
     player.seatId = '';
     player.fightMode = false;

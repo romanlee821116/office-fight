@@ -272,7 +272,12 @@ function seatAt(furnitureId: string, suffix: string, x: number, z: number, rotY:
  */
 export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   const rotY = f.rotY ?? 0;
-  if (f.type === 'chair') return [seatAt(f.id, '', f.x, f.z, rotY)];
+  // 會議椅就是牌桌的座位：標記 manual，讓一般的「走近按 E 坐下」跳過它們，
+  // 入座改由撲克那條訊息處理（要先確認身分、從帳號金幣扣買入）
+  if (f.type === 'chair') {
+    const seat = seatAt(f.id, '', f.x, f.z, rotY);
+    return [f.id.startsWith('mchair-') ? { ...seat, label: '入座牌桌', manual: true } : seat];
+  }
   if (f.type === 'sofa') {
     return SOFA_SEAT_OFFSETS.map((dx, i) => seatAt(f.id, String(i), f.x + dx * Math.cos(rotY), f.z - dx * Math.sin(rotY), rotY));
   }
@@ -292,6 +297,35 @@ export const SEATS: Seat[] = FURNITURE.flatMap((f) => {
   if (f.id === 'carousel') return carouselSeats();
   return [];
 });
+
+/**
+ * 牌桌座位：就是會議室那六張椅子（mchair-0…5）。
+ *
+ * 索引順序刻意不照 id：mchair 是「上排由左到右、下排由左到右」排的，
+ * 直接用會讓莊家鈕從上排右端跳到下排左端。這裡把下排反轉，讓座位沿著桌子
+ * 繞一圈，莊家鈕與下注順序才會照著桌面的實際方向走。
+ */
+function pokerSeats(): Seat[] {
+  const chairs = SEATS.filter((s) => s.furnitureId.startsWith('mchair-'));
+  const top = chairs.filter((s) => s.z < -3.5).sort((a, b) => a.x - b.x);
+  const bottom = chairs.filter((s) => s.z >= -3.5).sort((a, b) => b.x - a.x);
+  return [...top, ...bottom];
+}
+
+/** 牌桌座位依繞桌順序排好，撲克那邊靠索引對應座位 */
+export const POKER_SEATS: Seat[] = pokerSeats();
+
+const POKER_SEAT_IDS = new Set(POKER_SEATS.map((s) => s.id));
+
+/**
+ * 這個座位 id 是不是牌桌的位子。
+ *
+ * 不要改用 id 前綴判斷：牌桌座位就是會議椅（mchair-…），而椅子的命名是家具表的事，
+ * 哪天牌桌換張桌子前綴就變了。認這份清單才不會漏。
+ */
+export function isPokerSeat(seatId: string): boolean {
+  return POKER_SEAT_IDS.has(seatId);
+}
 
 // 雲霄飛車與海盜船的座位不對應任何碰撞家具（都架在頭頂上），直接補進座位表
 SEATS.push(...coasterSeats(), ...shipSeats());
@@ -314,7 +348,7 @@ export function findNearestSeat(x: number, z: number, occupied: ReadonlySet<stri
   let best: Seat | null = null;
   let bestDist = maxDistance;
   for (const seat of SEATS) {
-    if (occupied.has(seat.id)) continue;
+    if (seat.manual || occupied.has(seat.id)) continue;
     const d = seatDistance(seat, x, z);
     if (d < bestDist) {
       best = seat;

@@ -99,6 +99,19 @@ export async function addCoins(id: string, amount: number): Promise<number | nul
   return rows[0]?.coins ?? null;
 }
 
+/**
+ * 條件式扣款：餘額夠才扣，回傳扣完後的餘額；不夠就回 null，一毛都不動。
+ * 牌桌買入用這個，addCoins 只收正數（進帳）。
+ */
+export async function spendCoins(id: string, amount: number): Promise<number | null> {
+  if (!pool || amount <= 0) return null;
+  const { rows } = await pool.query<{ coins: number }>(
+    'UPDATE users SET coins = coins - $2 WHERE id = $1 AND coins >= $2 RETURNING coins',
+    [id, amount],
+  );
+  return rows[0]?.coins ?? null;
+}
+
 /** 這個帳號買過的所有商品 id */
 export async function listOwnedItems(id: string): Promise<string[]> {
   if (!pool) return [];

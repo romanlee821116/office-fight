@@ -16,6 +16,7 @@ import { Playground } from './Playground';
 import { Oven } from './Oven';
 import { Stove } from './Stove';
 import { Pickups } from './Pickups';
+import { PokerTableScene } from './PokerTableScene';
 import { Projectiles } from './Projectiles';
 import { RemotePlayer } from './RemotePlayer';
 import { SceneThemeProvider } from './SceneTheme';
@@ -61,6 +62,7 @@ export function Scene() {
       <RemotePlayers />
       <Pets />
       <Npc />
+      <PokerTableScene />
       <Park />
       <Stove />
       <Oven />

@@ -9,7 +9,9 @@ import {
   OVEN,
   PET,
   PICKUPS,
+  POKER_SEATS,
   RUN_SPEED,
+  SEAT_INTERACT_DISTANCE,
   SEATS,
   SEAT_BY_ID,
   SNOWFIGHT,
@@ -45,6 +47,7 @@ import {
   sendOvenPlace,
   sendOvenTake,
   sendPickup,
+  sendPokerSit,
   sendSit,
   sendSnowJoin,
   sendSnowReload,
@@ -122,6 +125,25 @@ function nearestPickup(x: number, z: number): string | null {
 }
 
 /** 站得夠近的雪仗報名點；比賽結算中不提示（等清場） */
+/**
+ * 最近的空牌桌座位索引，沒有就回 -1。
+ * 位子有沒有人看 store 的 poker.seats 而不是座位佔用表——NPC 也會佔位子。
+ */
+function nearestPokerSeat(x: number, z: number): number {
+  const seats = useGame.getState().poker.seats;
+  let best = -1;
+  let bestDist = SEAT_INTERACT_DISTANCE;
+  for (const [index, seat] of POKER_SEATS.entries()) {
+    if (seats[index]?.id) continue;
+    const d = Math.hypot(seat.x - x, seat.z - z);
+    if (d < bestDist) {
+      best = index;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
 function nearestSnowSlot(x: number, z: number): SnowTeam | null {
   if (useGame.getState().snow.status === 'over') return null;
   const dRed = Math.hypot(x - SNOWFIGHT.slotRed.x, z - SNOWFIGHT.slotRed.z);
@@ -257,6 +279,8 @@ export function LocalPlayer() {
           sendNpcDrop(); // 拖著路人時 E 是放開他
         } else if (state.nearCourtSlot && !inCourtMatch(state.me?.sessionId)) {
           sendCourtJoin(state.nearCourtSlot);
+        } else if (state.nearPokerSeat >= 0) {
+          sendPokerSit(state.nearPokerSeat);
         } else if (nearPetId) {
           sendPetPickup(nearPetId);
         } else if (state.nearNpc) {
@@ -460,6 +484,8 @@ export function LocalPlayer() {
       const nearB = Math.hypot(local.x - COURT.slotB.x, local.z - COURT.slotB.z) <= COURT.joinRange;
       const slot = nearA && !court.aId ? 'A' : nearB && !court.bId ? 'B' : null;
       useGame.getState().setNearCourtSlot(court.status === 'over' ? null : slot);
+      // 牌桌：找最近的空位；已經坐著的人不需要提示
+      useGame.getState().setNearPokerSeat(local.seatId ? -1 : nearestPokerSeat(local.x, local.z));
     }
 
     // 20Hz 上傳；靜止且無變化時不重複送

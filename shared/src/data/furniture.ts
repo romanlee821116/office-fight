@@ -79,7 +79,8 @@ export const FURNITURE: FurnitureDef[] = [
   { id: 'trash-1', type: 'prop', variant: 'trashcan', x: -0.7, z: -3.6, w: 0.45, d: 0.45, h: 0.9, color: '#9AA5B1' },
 
   // 會議區
-  { id: 'meeting-table', type: 'table', x: 6.6, z: -3.5, w: 3.4, d: 0.95, h: 0.7, color: '#D9B99B' },
+  // 會議桌就是牌桌：位置、尺寸與那六張會議椅都不動，只換成撲克桌的外觀
+  { id: 'meeting-table', type: 'table', variant: 'poker-table', x: 6.6, z: -3.5, w: 3.4, d: 0.95, h: 0.7, color: '#1F6F4A' },
   ...meetingChairs,
   { id: 'whiteboard', type: 'whiteboard', x: 6.6, z: -7.85, w: 3, d: 0.1, h: 1.4, color: '#FFFFFF', solid: false },
 

@@ -4,6 +4,7 @@ import { useGame } from '../store/useGame';
 import { ChatPanel } from './ChatPanel';
 import { CoinPurse } from './CoinPurse';
 import { CourtBanner } from './CourtBanner';
+import { PokerPanel } from './PokerPanel';
 import { DuelOverlay } from './DuelOverlay';
 import { IdleWarning } from './IdleWarning';
 import { FightPanel } from './FightPanel';
@@ -23,8 +24,15 @@ export function Hud() {
   const setWeatherEnabled = useGame((s) => s.setWeatherEnabled);
   const wInfo = weatherInfo(weather.code);
 
+  // z-[100]：角色名牌是 drei 的 Html（zIndexRange 上限 50），不壓過去的話
+  // 名牌會蓋在牌桌面板、商店這些 UI 上面
   return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col p-4">
+    <div className="pointer-events-none absolute inset-0 z-[100] flex flex-col p-4">
+      {/* 牌桌：疊在畫面正中央，面板自己決定要不要顯示 */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <PokerPanel />
+      </div>
+
       {/* 頂部 */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-2">

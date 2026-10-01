@@ -10,6 +10,9 @@ import {
   type ChatMessage,
   type CourtShotEvent,
   type CourtSide,
+  type PokerActPayload,
+  type PokerEventPayload,
+  type PokerShowdownEntry,
   type DuelAction,
   type DuelEvent,
   type HitEvent,
@@ -57,6 +60,20 @@ import {
   triggerSwing,
 } from '../scene/runtime';
 
+/** schema 的 PokerSeat，欄位與 server/src/rooms/schema.ts 一致 */
+interface PokerSeatShape {
+  id: string;
+  name: string;
+  isNpc: boolean;
+  avatarId: string;
+  chips: number;
+  bet: number;
+  folded: boolean;
+  allIn: boolean;
+  inHand: boolean;
+  shown: number[];
+}
+
 interface OfficeStateShape {
   players: Map<string, PlayerState>;
   pickups: Map<string, PickupState>;
@@ -71,6 +88,16 @@ interface OfficeStateShape {
   courtPlayerB: string;
   courtScoreA: number;
   courtScoreB: number;
+  pokerStreet: string;
+  pokerSeats: PokerSeatShape[];
+  pokerBoard: number[];
+  pokerPot: number;
+  pokerToAct: number;
+  pokerDeadline: number;
+  pokerCurrentBet: number;
+  pokerMinRaise: number;
+  pokerResult: string;
+  pokerNpcs: boolean;
   snowStatus: string;
   snowStartsAt: number;
   snowWinner: string;
@@ -344,6 +371,74 @@ function bindRoom(r: Room<OfficeStateShape>): void {
   $(r.state).listen('courtPlayerB', syncCourt);
   $(r.state).listen('courtScoreA', syncCourt);
   $(r.state).listen('courtScoreB', syncCourt);
+
+  // 牌桌
+  const syncPoker = () =>
+    useGame.getState().setPoker({
+      street: r.state.pokerStreet ?? 'idle',
+      seats: [...r.state.pokerSeats].map((seat) => ({
+        id: seat.id ?? '',
+        name: seat.name ?? '',
+        isNpc: Boolean(seat.isNpc),
+        avatarId: seat.avatarId ?? '',
+        chips: seat.chips ?? 0,
+        bet: seat.bet ?? 0,
+        folded: Boolean(seat.folded),
+        allIn: Boolean(seat.allIn),
+        inHand: Boolean(seat.inHand),
+        shown: [...(seat.shown ?? [])],
+      })),
+      board: [...(r.state.pokerBoard ?? [])],
+      pot: r.state.pokerPot ?? 0,
+      toAct: r.state.pokerToAct ?? -1,
+      deadline: r.state.pokerDeadline ?? 0,
+      currentBet: r.state.pokerCurrentBet ?? 0,
+      minRaise: r.state.pokerMinRaise ?? 0,
+      result: r.state.pokerResult ?? '',
+      npcs: r.state.pokerNpcs ?? true,
+    });
+  $(r.state).pokerSeats.onAdd((seat) => {
+    $(seat).onChange(syncPoker);
+    syncPoker();
+  });
+  for (const key of ['pokerStreet', 'pokerPot', 'pokerToAct', 'pokerDeadline', 'pokerCurrentBet', 'pokerMinRaise', 'pokerResult', 'pokerNpcs'] as const) {
+    $(r.state).listen(key, syncPoker);
+  }
+  // 公共牌每次都整個換掉參考，所以 listen 收得到
+  $(r.state).listen('pokerBoard', syncPoker);
+
+  // 攤牌與分錢是兩個事件，先把攤牌的牌面存著，等分錢結果到了一起顯示
+  let showdownBuffer: PokerShowdownEntry[] = [];
+  r.onMessage<PokerEventPayload>(Messages.pokerEvent, (ev) => {
+    const game = useGame.getState();
+    switch (ev.kind) {
+      case 'hole':
+        game.setPokerHole(ev.cards);
+        break;
+      case 'action':
+        game.pushPokerLog(ev.text);
+        break;
+      case 'say':
+        game.pushPokerLog(`「${ev.text}」`);
+        break;
+      case 'showdown':
+        // 先存著，等 payout 到了一起組成結算畫面
+        showdownBuffer = ev.entries;
+        game.pushPokerLog(ev.entries.map((e) => `${e.name}：${e.hand}`).join('、'));
+        break;
+      case 'payout':
+        game.setPokerSummary({ entries: showdownBuffer, text: ev.text, busted: false });
+        showdownBuffer = [];
+        break;
+      case 'busted':
+        // busted 一定晚於 payout 送到，所以是補進已經開著的結算畫面
+        game.markPokerBusted();
+        break;
+      case 'error':
+        game.pushPokerLog(ev.text);
+        break;
+    }
+  });
 
   // 打雪仗
   const syncSnow = () =>
@@ -728,6 +823,27 @@ export function sendCourtJoin(side: CourtSide): void {
 
 export function sendCourtLeave(): void {
   room?.send(Messages.courtLeave);
+}
+
+export function sendPokerSit(seatIndex: number): void {
+  room?.send(Messages.pokerSit, { seatIndex });
+}
+
+export function sendPokerLeave(): void {
+  room?.send(Messages.pokerLeave);
+}
+
+export function sendPokerAct(action: PokerActPayload['action'], amount = 0): void {
+  room?.send(Messages.pokerAct, { action, amount });
+}
+
+export function sendPokerNpcs(enabled: boolean): void {
+  room?.send(Messages.pokerNpcs, { enabled });
+}
+
+/** 關掉結算畫面：桌上的人都關掉之後才會開下一手 */
+export function sendPokerContinue(): void {
+  room?.send(Messages.pokerContinue);
 }
 
 export function sendSwing(payload: SwingPayload): void {

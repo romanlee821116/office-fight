@@ -1,4 +1,4 @@
-import { MapSchema, Schema, type } from '@colyseus/schema';
+import { ArraySchema, MapSchema, Schema, type } from '@colyseus/schema';
 import { NPC, type AnimState, type PetAnim } from '@office/shared';
 
 export class Player extends Schema {
@@ -81,6 +81,32 @@ export class Npc extends Schema {
   @type('boolean') onFire: boolean = false;
 }
 
+/**
+ * 牌桌上的一個座位（公開資訊）。
+ *
+ * 底牌不在這裡，也永遠不會在：state 是廣播給全場的，底牌一旦進來，
+ * 任何人開 devtools 就看得到整桌的牌。底牌只存在伺服端的 PokerTable，
+ * 各自的兩張牌由 Messages.pokerHole 單獨發給本人。
+ */
+export class PokerSeat extends Schema {
+  /** 玩家 sessionId 或 NPC 的 npc:N；空字串代表空位 */
+  @type('string') id: string = '';
+  @type('string') name: string = '';
+  @type('boolean') isNpc: boolean = false;
+  /** NPC 的角色外觀；真人不用填（本人已經以玩家身分坐在場景裡） */
+  @type('string') avatarId: string = '';
+  /** 桌上籌碼 */
+  @type('uint32') chips: number = 0;
+  /** 本輪已下注 */
+  @type('uint32') bet: number = 0;
+  @type('boolean') folded: boolean = false;
+  @type('boolean') allIn: boolean = false;
+  /** 這手牌有沒有參與（中途入座的人要等下一手） */
+  @type('boolean') inHand: boolean = false;
+  /** 攤牌時才填：亮出來的兩張底牌 */
+  @type(['uint8']) shown = new ArraySchema<number>();
+}
+
 export class OfficeState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
   @type({ map: Pickup }) pickups = new MapSchema<Pickup>();
@@ -107,6 +133,25 @@ export class OfficeState extends Schema {
   @type('number') snowStartsAt: number = 0;
   /** 結算時的獲勝隊伍（'' | 'red' | 'blue'） */
   @type('string') snowWinner: string = '';
+  /** 德州撲克：idle | preflop | flop | turn | river | showdown */
+  @type('string') pokerStreet: string = 'idle';
+  @type([PokerSeat]) pokerSeats = new ArraySchema<PokerSeat>();
+  /** 公共牌（0～5 張） */
+  @type(['uint8']) pokerBoard = new ArraySchema<number>();
+  /** 檯面上的總底池（含本輪下注） */
+  @type('uint32') pokerPot: number = 0;
+  /** 輪到哪個座位，-1 代表現在不等任何人 */
+  @type('int8') pokerToAct: number = -1;
+  /** 行動期限（Date.now 基準），前端用來跑倒數條 */
+  @type('number') pokerDeadline: number = 0;
+  /** 本輪最高下注額與最小加注幅度，前端算按鈕金額用 */
+  @type('uint32') pokerCurrentBet: number = 0;
+  @type('uint32') pokerMinRaise: number = 0;
+  /** 上一手的結果播報，攤牌畫面用 */
+  @type('string') pokerResult: string = '';
+  /** 有沒有讓 NPC 陪打；關掉之後桌上只剩真人 */
+  @type('boolean') pokerNpcs: boolean = true;
+
   /** WMO 天氣代碼，-1 = 尚未取得 */
   @type('number') weatherCode: number = -1;
   @type('number') weatherTemp: number = 0;

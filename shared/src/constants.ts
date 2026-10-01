@@ -768,3 +768,36 @@ export const CAMERA = {
 };
 
 export const STATUS_PRESETS = ['工作中', '開會中', '午休', '離開', '可打擾'] as const;
+
+export const POKER = {
+  /**
+   * 牌桌座位數（含真人與 NPC）。
+   * 牌桌就是會議室那張長桌，六張會議椅直接當座位——6-max 也正好是撲克最常見的桌型。
+   */
+  seatCount: 6,
+  /** 人不夠時 NPC 補到幾人，剛好讓節奏不拖 */
+  npcFillTo: 4,
+  smallBlind: 10,
+  bigBlind: 20,
+  /** 入座買入；手上籌碼輸光就得離座再買入一次 */
+  buyIn: 1000,
+  /** 最低買入門檻：金幣不到這個數就不讓入座（免得坐下就被大盲吃掉） */
+  minCoins: 200,
+  /** 輪到你之後多久沒動作就自動蓋牌（沒人下注時改成過牌） */
+  actionTimeoutMs: 30_000,
+  /** NPC 思考時間，讓牌桌有節奏感而不是瞬間跑完 */
+  npcThinkMinMs: 900,
+  npcThinkMaxMs: 2200,
+  /** 每條街發牌後的停頓，讓前端有時間播翻牌 */
+  streetPauseMs: 1200,
+  /**
+   * 結算畫面最多停多久。
+   * 正常情況是等人自己按「繼續」，這個時間只是兜底——免得有人開著分頁去吃飯，
+   * 整桌就卡在結算畫面上。
+   */
+  continueTimeoutMs: 90_000,
+  /** 一手結束到下一手之間的間隔 */
+  nextHandMs: 2500,
+  /** 座位空著多久就把 NPC 收掉（沒有真人在桌邊時不要空轉） */
+  idleTableMs: 60_000,
+};

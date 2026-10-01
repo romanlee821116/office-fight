@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { DANCES, EMOTES, NPC, NPC_HAZARDS, SEAT_BY_ID, SNOWFIGHT, SNOW_TEAM_LABEL, getPet, getWeapon } from '@office/shared';
+import { DANCES, EMOTES, NPC, NPC_HAZARDS, POKER, SEAT_BY_ID, SNOWFIGHT, SNOW_TEAM_LABEL, getPet, getWeapon } from '@office/shared';
 import {
   eatHeldFood,
   sendAttack,
   sendCourtJoin,
+  sendPokerSit,
   sendDrop,
   sendFeedPet,
   sendNpcDrop,
@@ -75,6 +76,7 @@ export function InteractionBar() {
   const oven = useGame((s) => s.oven);
   const court = useGame((s) => s.court);
   const nearCourtSlot = useGame((s) => s.nearCourtSlot);
+  const nearPokerSeat = useGame((s) => s.nearPokerSeat);
   const snow = useGame((s) => s.snow);
   const nearSnowSlot = useGame((s) => s.nearSnowSlot);
   const nearSnowPile = useGame((s) => s.nearSnowPile);
@@ -123,6 +125,7 @@ export function InteractionBar() {
   else if (carriedPet) actions.push({ hint: 'E', label: `放下 ${getPet(carriedPet.petType).name}`, onClick: sendPetDrop });
   else if (carryingNpc) actions.push({ hint: 'E', label: `放開 ${NPC.name}`, onClick: sendNpcDrop });
   else if (canCourtJoin) actions.push({ hint: 'E', label: `報名匹克球（${nearCourtSlot} 側）`, onClick: () => sendCourtJoin(nearCourtSlot!) });
+  else if (nearPokerSeat >= 0) actions.push({ hint: 'E', label: `入座牌桌（買入 ${POKER.buyIn}）`, onClick: () => sendPokerSit(nearPokerSeat) });
   else if (nearPet) actions.push({ hint: 'E', label: `抱起 ${getPet(nearPet.petType).name}`, onClick: () => sendPetPickup(nearPet.id) });
   else if (nearNpc) actions.push({ hint: 'E', label: `拖走 ${NPC.name}`, onClick: sendNpcPickup });
   else if (canOvenTake)
