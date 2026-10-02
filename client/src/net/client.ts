@@ -427,7 +427,14 @@ function bindRoom(r: Room<OfficeStateShape>): void {
         game.pushPokerLog(ev.entries.map((e) => `${e.name}：${e.hand}`).join('、'));
         break;
       case 'payout':
-        game.setPokerSummary({ entries: showdownBuffer, text: ev.text, busted: false });
+        game.setPokerSummary({
+          entries: showdownBuffer,
+          // 趁公共牌還沒被下一手換掉，先收進結算裡
+          board: [...(r.state.pokerBoard ?? [])],
+          text: ev.text,
+          winners: ev.winners.map((w) => w.seat),
+          busted: false,
+        });
         showdownBuffer = [];
         break;
       case 'busted':

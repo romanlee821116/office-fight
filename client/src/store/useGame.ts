@@ -96,8 +96,16 @@ export interface PokerSeatView {
 export interface PokerSummary {
   /** 攤牌時各家亮出來的牌；沒人跟到底就是空的 */
   entries: PokerShowdownEntry[];
+  /**
+   * 這手的公共牌。
+   * 跟著結算一起存起來而不是當場讀 state：別人按了繼續、下一手開起來之後，
+   * state 上的公共牌就被換掉了，而這個畫面可能還開著。
+   */
+  board: number[];
   /** 誰贏得多少 */
   text: string;
+  /** 贏家的座位索引，用來在攤牌列上標記 */
+  winners: number[];
   /** 自己的籌碼是不是輸光了 */
   busted: boolean;
 }
@@ -106,8 +114,16 @@ export interface PokerSummary {
 export interface PokerSummary {
   /** 攤牌時各家亮出來的牌；沒人跟到底就是空的 */
   entries: PokerShowdownEntry[];
+  /**
+   * 這手的公共牌。
+   * 跟著結算一起存起來而不是當場讀 state：別人按了繼續、下一手開起來之後，
+   * state 上的公共牌就被換掉了，而這個畫面可能還開著。
+   */
+  board: number[];
   /** 誰贏得多少 */
   text: string;
+  /** 贏家的座位索引，用來在攤牌列上標記 */
+  winners: number[];
   /** 自己的籌碼是不是輸光了 */
   busted: boolean;
 }
@@ -501,7 +517,9 @@ export const useGame = create<GameState>((set) => ({
   pushPokerLog: (text) => set((s) => ({ pokerLog: [...s.pokerLog, text].slice(-POKER_LOG_MAX) })),
   setPokerSummary: (pokerSummary) => set({ pokerSummary }),
   markPokerBusted: () =>
-    set((s) => ({ pokerSummary: s.pokerSummary ? { ...s.pokerSummary, busted: true } : { entries: [], text: '', busted: true } })),
+    set((s) => ({
+      pokerSummary: s.pokerSummary ? { ...s.pokerSummary, busted: true } : { entries: [], board: [], text: '', winners: [], busted: true },
+    })),
   setNearPokerSeat: (nearPokerSeat) => set((s) => (s.nearPokerSeat === nearPokerSeat ? s : { nearPokerSeat })),
   setNearCourtSlot: (nearCourtSlot) => set((s) => (s.nearCourtSlot === nearCourtSlot ? s : { nearCourtSlot })),
   setSnow: (snow) => set({ snow }),

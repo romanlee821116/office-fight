@@ -102,20 +102,39 @@ export function PokerPanel() {
           {summary.busted ? '🃏 你的籌碼輸光了' : '🃏 本手結果'}
         </div>
 
+        {/* 公共牌：沒有它就看不出「一對」是對到什麼，也看不懂誰為什麼贏 */}
+        {summary.board.length > 0 && (
+          <div className="mb-3 rounded-xl bg-emerald-900/15 p-3">
+            <div className="mb-1.5 text-center text-[13px] font-bold opacity-70">公共牌</div>
+            <div className="flex justify-center gap-1.5">
+              {summary.board.map((c) => (
+                <Card key={c} card={c} />
+              ))}
+            </div>
+          </div>
+        )}
+
         {summary.entries.length > 0 ? (
           <div className="mb-3 rounded-xl bg-amber-100/70 p-3">
-            <div className="mb-1.5 text-[13px] font-bold opacity-70">攤牌</div>
-            {summary.entries.map((entry) => (
-              <div key={entry.seat} className="flex items-center gap-2 py-1 text-[13px]">
-                <span className="min-w-0 flex-1 truncate font-semibold">{entry.name}</span>
-                <span className="flex gap-1">
-                  {entry.cards.map((c) => (
-                    <Card key={c} card={c} small />
-                  ))}
-                </span>
-                <span className="w-20 text-right font-semibold">{entry.hand}</span>
-              </div>
-            ))}
+            <div className="mb-1.5 text-[13px] font-bold opacity-70">各家底牌</div>
+            {summary.entries.map((entry) => {
+              const won = summary.winners.includes(entry.seat);
+              return (
+                <div
+                  key={entry.seat}
+                  className={`flex items-center gap-2 rounded-lg px-2 py-1 text-[13px] ${won ? 'bg-amber-300/70 font-bold' : ''}`}
+                >
+                  <span className="w-5 text-center">{won ? '👑' : ''}</span>
+                  <span className="min-w-0 flex-1 truncate font-semibold">{entry.name}</span>
+                  <span className="flex gap-1">
+                    {entry.cards.map((c) => (
+                      <Card key={c} card={c} small />
+                    ))}
+                  </span>
+                  <span className="w-20 text-right font-semibold">{entry.hand}</span>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="mb-3 rounded-xl bg-white/40 py-3 text-center text-[13px] opacity-70">沒有人跟到底，沒有攤牌</div>
