@@ -387,8 +387,28 @@ export class PokerTable {
     }
   }
 
+  /**
+   * 退還沒有人跟的那段下注。
+   *
+   * 下注 3000 但最高只有人跟到 800 時，多出來的 2200 沒有任何人能爭，
+   * 照規則要在結算前直接還給下注的人。不退的話它會變成一個「只有他有資格」
+   * 的邊池，金額雖然照樣回到他手上，但底池會虛高，播報也會變成
+   * 「牌最小的人贏最多」——看牌的人完全無法理解發生了什麼事。
+   */
+  private refundUncalled(): void {
+    const live = this.occupied().filter((s) => s.committed > 0);
+    if (live.length < 2) return;
+    const sorted = [...live].sort((a, b) => b.committed - a.committed);
+    const excess = sorted[0].committed - sorted[1].committed;
+    if (excess <= 0) return;
+    sorted[0].chips += excess;
+    sorted[0].committed -= excess;
+    sorted[0].allIn = sorted[0].chips === 0;
+  }
+
   /** 結算這手牌：只剩一人就直接給，否則攤牌比牌力 */
   private finishHand(): void {
+    this.refundUncalled();
     const all = this.occupied();
     const pots = buildPots(all.map((s) => ({ id: s.id, committed: s.committed, folded: s.folded })));
     this.pot = pots.reduce((sum, p) => sum + p.amount, 0);

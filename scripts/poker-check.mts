@@ -197,6 +197,40 @@ for (let i = 0; i < 4000; i++) {
 }
 check('四千手隨機牌局籌碼守恆', simFail, 0);
 
+// --- 沒被跟到的下注要退還，不能變成「贏」 ---
+{
+  const t = new PokerTable();
+  const ids = ['A', 'B', 'C'];
+  ids.forEach((id, i) => t.sit(i, { id, name: id, isNpc: false, chips: 10000 }));
+  const before = t.occupied().reduce((sum, x) => sum + x.chips, 0);
+
+  let now = 1000;
+  t.startHand(now);
+  // C 一路加到全下，A、B 跟不到那麼多就蓋牌 → C 多下的那段沒人跟
+  let guard = 0;
+  while (t.street !== 'idle' && guard++ < 300) {
+    if (t.toAct >= 0) {
+      const seat = t.seats[t.toAct]!;
+      now += 10;
+      if (seat.id === 'C') {
+        const { max } = t.raiseBounds(seat);
+        if (max > t.currentBet) t.act('C', 'raise', max, now);
+        else t.act('C', 'call', 0, now);
+      } else {
+        t.act(seat.id, t.callAmount(seat) > 0 ? 'fold' : 'check', 0, now);
+      }
+    } else {
+      now = t.deadline + 1;
+      t.tick(now);
+    }
+  }
+  const c = t.occupied().find((x) => x.id === 'C')!;
+  const after = t.occupied().reduce((sum, x) => sum + x.chips, 0);
+  check('全下沒人跟時籌碼仍守恆', after, before);
+  // 別人都蓋牌，C 應該把自己沒被跟的錢全拿回來，淨贏只有對手投入的盲注
+  check('C 沒有輸掉自己沒被跟的那段', c.chips >= 10000, true);
+}
+
 console.log(fail === 0 ? '✓ 牌局引擎通過' : `✗ 牌局引擎 ${fail} 項失敗`);
 
 // ---------------------------------------------------------------------------
